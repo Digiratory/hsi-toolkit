@@ -29,6 +29,9 @@ CI_STD = "Среднее ± 3·STD"
 POLYLINE_RIBBON = DEFAULT_RIBBON_WIDTH
 MAX_TRACES = 30
 
+KIND_POLYGONS = "Полигоны"
+KIND_LINES = "Полилинии"
+
 
 def _ci_setting(index: int) -> Tuple[str, tuple]:
     return {
@@ -50,6 +53,8 @@ class SpectrumPanel(QWidget):
         self._cancel_current: Optional[dict] = None
         self._cache: dict = {}
 
+        self.kind_combo = QComboBox()
+        self.kind_combo.addItems([KIND_POLYGONS, KIND_LINES])
         self.view_combo = QComboBox()
         self.view_combo.addItems([VIEW_3D, VIEW_WATERFALL])
         self.waterfall_combo = QComboBox()
@@ -58,6 +63,9 @@ class SpectrumPanel(QWidget):
         self.ci_combo.addItems([CI_IQR, CI_P975, CI_STD])
 
         bar = QHBoxLayout()
+        bar.addWidget(QLabel("Показать:"))
+        bar.addWidget(self.kind_combo)
+        bar.addSpacing(12)
         bar.addWidget(QLabel("Полилинии:"))
         bar.addWidget(self.view_combo)
         bar.addWidget(self.waterfall_combo)
@@ -74,9 +82,11 @@ class SpectrumPanel(QWidget):
         layout.addLayout(bar)
         layout.addWidget(self.canvas, stretch=1)
 
+        self.kind_combo.currentIndexChanged.connect(self._redraw)
         self.view_combo.currentIndexChanged.connect(self._redraw)
         self.waterfall_combo.currentTextChanged.connect(self._redraw)
         self.ci_combo.currentIndexChanged.connect(self._redraw)
+        self._set_kind_widgets()
         self.show_message("Нет видимых объектов — отметьте их галочкой в списке")
 
     # -- public ---------------------------------------------------------------
@@ -233,15 +243,42 @@ class SpectrumPanel(QWidget):
         self.canvas.draw_idle()
 
     def _redraw(self) -> None:
-        if self._result_lines:
-            if self.view_combo.currentText() == VIEW_3D:
-                self._draw_lines_3d(self._result_lines)
-            else:
-                self._draw_lines_waterfall(self._result_lines)
-        elif self._result_polygons:
+        lines_ok = bool(self._result_lines)
+        polygons_ok = bool(self._result_polygons)
+        want = self.kind_combo.currentText()
+        if want == KIND_POLYGONS and polygons_ok:
             self._draw_polygons(self._result_polygons)
+            self._set_kind_widgets()
+        elif want == KIND_LINES and lines_ok:
+            self._draw_lines()
+            self._set_kind_widgets()
+        elif polygons_ok:  # requested kind has no data: show what exists
+            self._sync_kind_combo(KIND_POLYGONS)
+            self._draw_polygons(self._result_polygons)
+            self._set_kind_widgets()
+        elif lines_ok:
+            self._sync_kind_combo(KIND_LINES)
+            self._draw_lines()
+            self._set_kind_widgets()
         else:
             self.show_message("Нет видимых объектов — отметьте их галочкой в списке")
+
+    def _draw_lines(self) -> None:
+        if self.view_combo.currentText() == VIEW_3D:
+            self._draw_lines_3d(self._result_lines)
+        else:
+            self._draw_lines_waterfall(self._result_lines)
+
+    def _sync_kind_combo(self, kind: str) -> None:
+        if self.kind_combo.currentText() != kind:
+            self.kind_combo.blockSignals(True)
+            self.kind_combo.setCurrentText(kind)
+            self.kind_combo.blockSignals(False)
+
+    def _set_kind_widgets(self) -> None:
+        lines_shown = self.kind_combo.currentText() == KIND_LINES
+        self.view_combo.setEnabled(lines_shown)
+        self.waterfall_combo.setEnabled(lines_shown)
 
     def _draw_polygons(self, results: list) -> None:
         self.figure.clf()

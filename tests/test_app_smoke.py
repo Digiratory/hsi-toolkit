@@ -70,11 +70,16 @@ def test_smoke_workflow(window, qapp):
     assert [r[0] for r in win.spectrum_panel._result_polygons] == ["t1"]
     assert [r[0] for r in win.spectrum_panel._result_lines] == ["t2"]
 
-    # 3D view toggle
+    # Kind switch: both kinds present -> the combo decides what is displayed.
+    assert win.spectrum_panel.kind_combo.currentText() == "Полигоны"
+    # One curve per polygon; the CI band is a PolyCollection, not a line.
+    assert len(win.spectrum_panel.figure.axes[0].lines) == 1
+
+    win.spectrum_panel.kind_combo.setCurrentText("Полилинии")
     win.spectrum_panel.view_combo.setCurrentText("3D")
     qapp.processEvents()
-    wait_for(lambda: win.spectrum_panel.has_content, qapp)
     assert any("3d" in ax.name.lower() for ax in win.spectrum_panel.figure.axes)
+    assert not win.spectrum_panel.view_combo.isEnabled() is False
 
     # Save annotations to JSON and load back
     ann_path = tmp_path / "annotations.json"
