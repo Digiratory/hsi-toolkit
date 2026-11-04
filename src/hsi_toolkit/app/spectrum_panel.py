@@ -7,6 +7,7 @@ from typing import List, Optional, Tuple
 import numpy as np
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 from matplotlib.figure import Figure
+from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QComboBox, QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
 from hsi_toolkit.app.workers import FunctionWorker
@@ -42,6 +43,8 @@ def _ci_setting(index: int) -> Tuple[str, tuple]:
 
 
 class SpectrumPanel(QWidget):
+    settings_changed = Signal()
+
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self._ws = None
@@ -70,7 +73,7 @@ class SpectrumPanel(QWidget):
         bar.addWidget(self.view_combo)
         bar.addWidget(self.waterfall_combo)
         bar.addSpacing(12)
-        bar.addWidget(QLabel("Полигонов интервал:"))
+        bar.addWidget(QLabel("Доверительный интервал:"))
         bar.addWidget(self.ci_combo)
         bar.addStretch(1)
 
@@ -85,7 +88,8 @@ class SpectrumPanel(QWidget):
         self.kind_combo.currentIndexChanged.connect(self._redraw)
         self.view_combo.currentIndexChanged.connect(self._redraw)
         self.waterfall_combo.currentTextChanged.connect(self._redraw)
-        self.ci_combo.currentIndexChanged.connect(self._redraw)
+        # Changing the interval type changes the cached values -> recompute.
+        self.ci_combo.currentIndexChanged.connect(lambda _: self.settings_changed.emit())
         self._set_kind_widgets()
         self.show_message("Нет видимых объектов — отметьте их галочкой в списке")
 

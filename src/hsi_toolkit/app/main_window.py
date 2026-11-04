@@ -67,6 +67,7 @@ class MainWindow(QMainWindow):
         self.annotation_panel.annotations_deleted.connect(self._on_annotations_deleted)
 
         self.spectrum_panel = SpectrumPanel()
+        self.spectrum_panel.settings_changed.connect(self._update_spectra)
 
         self.setCentralWidget(self.preview_panel)
         self._info_label = QLabel()

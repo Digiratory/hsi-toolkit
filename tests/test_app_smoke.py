@@ -75,6 +75,13 @@ def test_smoke_workflow(window, qapp):
     # One curve per polygon; the CI band is a PolyCollection, not a line.
     assert len(win.spectrum_panel.figure.axes[0].lines) == 1
 
+    # Changing the confidence-interval type must recompute, not just redraw.
+    lower_before = win.spectrum_panel._result_polygons[0][2]
+    win.spectrum_panel.ci_combo.setCurrentIndex(1)  # percentiles 2.5–97.5
+    wait_for(lambda: not win.spectrum_panel.is_busy, qapp)
+    lower_after = win.spectrum_panel._result_polygons[0][2]
+    assert lower_after is not lower_before and not np.allclose(lower_after, lower_before)
+
     win.spectrum_panel.kind_combo.setCurrentText("Полилинии")
     win.spectrum_panel.view_combo.setCurrentText("3D")
     qapp.processEvents()
