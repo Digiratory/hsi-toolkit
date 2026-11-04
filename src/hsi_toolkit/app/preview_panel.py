@@ -49,6 +49,7 @@ class PreviewPanel(QWidget):
         self._center_nm = 0.0
         self._width_nm = 0.0
         self._integral: Optional[np.ndarray] = None
+        self._last_region: Optional[tuple] = None
 
         self.canvas = PreviewCanvas()
         self.canvas.annotation_created.connect(self.annotation_created.emit)
@@ -111,6 +112,13 @@ class PreviewPanel(QWidget):
         self.width_slider.valueChanged.connect(self._on_slider_changed)
         self.stretch_combo.currentTextChanged.connect(self._on_options_changed)
         self.cmap_combo.currentTextChanged.connect(self._on_options_changed)
+        # Pan/zoom of the preview changes the strip's spatial region.
+        self.canvas.ax.callbacks.connect(
+            "xlim_changed", self._on_view_limits_changed
+        )
+        self.canvas.ax.callbacks.connect(
+            "ylim_changed", self._on_view_limits_changed
+        )
         self._set_controls_enabled(False)
         self._bottom.setVisible(False)
 
@@ -128,6 +136,7 @@ class PreviewPanel(QWidget):
     def set_workspace(self, ws) -> None:
         self._ws = ws
         self._integral = None
+        self._last_region = None
         if ws is None:
             self._set_controls_enabled(False)
             self.canvas.show_message("Откройте набор данных (Файл → Открыть…)")
@@ -194,16 +203,45 @@ class PreviewPanel(QWidget):
         )
 
     def _integral_spectrum(self, ws) -> np.ndarray:
-        """Mean intensity per band over the whole low-res cube: (B,)."""
-        if self._integral is None:
-            source = ws.lowres if ws.lowres is not None else None
+        """Mean intensity per band over the image region currently in view."""
+        region = self._view_region(ws)
+        if self._integral is None or self._last_region != region:
+            source = ws.lowres
             if source is None:
                 return np.asarray(ws.wavelengths) * np.nan  # placeholder shape
-            self._integral = np.asarray(source.mean(axis=(1, 2)), dtype=np.float64)
+            fx = ws.samples / source.shape[2]
+            fy = ws.lines / source.shape[1]
+            x0, x1, y0, y1 = region
+            x0l = int(np.clip(np.floor(x0 / fx), 0, source.shape[2] - 1))
+            x1l = int(np.clip(np.ceil(x1 / fx), x0l + 1, source.shape[2]))
+            y0l = int(np.clip(np.floor(y0 / fy), 0, source.shape[1] - 1))
+            y1l = int(np.clip(np.ceil(y1 / fy), y0l + 1, source.shape[1]))
+            self._integral = np.asarray(
+                source[:, y0l:y1l, x0l:x1l].mean(axis=(1, 2)), dtype=np.float64
+            )
+            self._last_region = region
         return self._integral
 
+    def _view_region(self, ws) -> tuple:
+        """Currently visible image area in full-res pixels, (x0, x1, y0, y1)."""
+        x0, x1 = sorted(self.canvas.ax.get_xlim())
+        y0, y1 = sorted(self.canvas.ax.get_ylim())
+        x0 = int(np.clip(np.floor(x0), 0, ws.samples - 1))
+        x1 = int(np.clip(np.ceil(x1), x0 + 1, ws.samples))
+        y0 = int(np.clip(np.floor(y0), 0, ws.lines - 1))
+        y1 = int(np.clip(np.ceil(y1), y0 + 1, ws.lines))
+        return (x0, x1, y0, y1)
+
+    def _on_view_limits_changed(self, _ax) -> None:
+        """Pan/zoom of the preview changes the spatial region of the strip."""
+        if self._ws is None or self.mode_combo.currentText() != MODE_WINDOW:
+            return
+        if self._view_region(self._ws) != self._last_region:
+            self._debounce.start()
+
     def _draw_spectrum_strip(self, ws) -> None:
-        """Integral spectrum with the active window shaded on top."""
+        """Integral spectrum of the visible region with the window shaded."""
+        region = self._view_region(ws)
         integral = self._integral_spectrum(ws)
         self.spectrum_figure.clf()
         ax = self.spectrum_figure.add_subplot(1, 1, 1)
@@ -228,6 +266,11 @@ class PreviewPanel(QWidget):
         ax.set_ylim(bottom=0)
         ax.set_xlabel("λ, нм", fontsize=8)
         ax.set_ylabel("Средняя интенсивность", fontsize=8)
+        x0, x1, y0, y1 = region
+        if (x1 - x0, y1 - y0) < (ws.samples, ws.lines):
+            ax.set_title(
+                f"Область: x {x0}–{x1}, y {y0}–{y1}", fontsize=8
+            )
         ax.tick_params(labelsize=8)
         self.spectrum_figure.tight_layout(pad=0.8)
         self.spectrum_canvas.draw_idle()

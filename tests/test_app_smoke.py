@@ -175,6 +175,47 @@ def test_window_mode_spectrum_strip(window, qapp):
     assert not panel._bottom.isVisibleTo(panel)
 
 
+def test_zoom_preserved_and_region_strip(window, qapp):
+    win, ws, tmp_path = window
+    wait_for(lambda: win.preview_panel.has_image, qapp)
+    panel = win.preview_panel
+    canvas = panel.canvas
+
+    # Settings changes (re-set image) must not reset user zoom.
+    canvas.ax.set_xlim(5, 15)
+    canvas.ax.set_ylim(10, 20)
+    panel.update_preview()
+    qapp.processEvents()
+    assert tuple(canvas.ax.get_xlim()) == (5.0, 15.0)
+    assert tuple(canvas.ax.get_ylim()) == (10.0, 20.0)
+
+    # The strip's integral spectrum is computed over the visible region.
+    panel.mode_combo.setCurrentText("Спектральное окно")
+    panel.update_preview()
+    qapp.processEvents()
+    ax = panel.spectrum_figure.axes[0]
+    assert "Область: x 5–15, y 10–20" in ax.get_title()
+
+    region = panel._view_region(ws)
+    assert region == (5, 15, 10, 20)
+    low = ws.lowres
+    fx = ws.samples / low.shape[2]
+    fy = ws.lines / low.shape[1]
+    x0l = int(np.floor(5 / fx)); x1l = int(np.ceil(15 / fx))
+    y0l = int(np.floor(10 / fy)); y1l = int(np.ceil(20 / fy))
+    expected = low[:, y0l:y1l, x0l:x1l].mean(axis=(1, 2))
+    np.testing.assert_allclose(panel._integral, expected, rtol=1e-4)
+
+    # Zooming out again updates the region (no worker, just the strip).
+    canvas.ax.set_xlim(-0.5, ws.samples - 0.5)
+    canvas.ax.set_ylim(ws.lines - 0.5, -0.5)
+    panel.update_preview()
+    qapp.processEvents()
+    assert panel._view_region(ws) == (0, ws.samples, 0, ws.lines)
+    ax = panel.spectrum_figure.axes[0]
+    assert "Область" not in ax.get_title()
+
+
 def test_tool_mode_switch(window, qapp):
     win, ws, tmp_path = window
     canvas = win.preview_panel.canvas

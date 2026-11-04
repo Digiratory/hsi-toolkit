@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import List
+from typing import List, Optional
 
 import numpy as np
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg, NavigationToolbar2QT
@@ -66,6 +66,7 @@ class PreviewCanvas(QWidget):
         self.ax = self._figure.add_subplot(1, 1, 1)
         self._image_artist = None
         self._message_artist = None
+        self._current_extent: Optional[tuple] = None
         self._annotations = AnnotationSet()
         self._overlay_artists: dict = {}
         self._selected_id = ""
@@ -87,6 +88,12 @@ class PreviewCanvas(QWidget):
 
     def set_image(self, image: np.ndarray, extent=None) -> None:
         self._clear_message()
+        # Preserve the user's pan/zoom across redraws as long as the data
+        # extent is unchanged (new dataset -> reset to the full view).
+        had_image = self._image_artist is not None
+        prev_limits = (
+            (self.ax.get_xlim(), self.ax.get_ylim()) if had_image else None
+        )
         if self._image_artist is not None:
             self._image_artist.remove()
         self._image_artist = self.ax.imshow(
@@ -96,8 +103,13 @@ class PreviewCanvas(QWidget):
             # (left, right, bottom, top): row 0 at the top of the screen.
             extent = (-0.5, image.shape[1] - 0.5, image.shape[0] - 0.5, -0.5)
         x0, x1, y0, y1 = extent
-        self.ax.set_xlim(x0, x1)
-        self.ax.set_ylim(y0, y1)
+        if had_image and self._current_extent == tuple(extent):
+            self.ax.set_xlim(*prev_limits[0])
+            self.ax.set_ylim(*prev_limits[1])
+        else:
+            self._current_extent = tuple(extent)
+            self.ax.set_xlim(x0, x1)
+            self.ax.set_ylim(y0, y1)
         self.ax.set_xlabel("x, пиксели")
         self.ax.set_ylabel("y, пиксели")
         self._canvas.draw_idle()
