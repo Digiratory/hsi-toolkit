@@ -22,8 +22,14 @@ Sample = Tuple[np.ndarray, np.ndarray, np.ndarray]  # (ys (width, n), xs (width,
 
 
 def ribbon_offsets(width: int) -> np.ndarray:
-    """Perpendicular cross-section offsets for a ribbon of ``width`` pixels."""
-    return np.linspace(-(int(width) - 1) / 2.0, (int(width) - 1) / 2.0, max(int(width), 1))
+    """Perpendicular cross-section offsets for a ribbon of ``width`` pixels.
+
+    Integer pixel offsets centered on the line (even widths put the extra
+    sample above the center), so no offset is a half-integer and np.round's
+    ties-to-even can never drop or duplicate a ribbon row.
+    """
+    width = max(int(width), 1)
+    return np.arange(width, dtype=np.float64) - (width - 1) // 2
 
 
 def segment_perpendicular(x0: float, y0: float, x1: float, y1: float) -> Tuple[float, float]:
@@ -114,7 +120,7 @@ def gather_polyline_ribbon(
     n_steps = sum(int(ys.shape[1]) for ys, _, _ in samples)
     data = np.empty(
         (ws.bands, n_steps, width),
-        dtype=np.float32 if corrected else np.uint16,
+        dtype=np.float32 if corrected else ws.raw_dtype,
     )
     for b in range(ws.bands):
         band = ws.corrected_band(b) if corrected else np.asarray(ws.raw_band(b))

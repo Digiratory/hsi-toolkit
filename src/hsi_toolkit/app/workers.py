@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Callable, List
 
-from PySide6.QtCore import QThread, Signal
+from PySide6.QtCore import QObject, QThread, Signal
 
 
 class FunctionWorker(QThread):
@@ -33,15 +33,20 @@ class FunctionWorker(QThread):
         self.finished_ok.emit(result)
 
 
-class WorkerPool:
+class WorkerPool(QObject):
     """Tracks running workers so teardown can join them before closing data.
 
     ``QThread`` objects must not be garbage-collected while running, and
     memmaps must not be closed underneath a thread still reading them — every
-    long-lived worker in the app registers here.
+    long-lived worker in the app registers here. ``worker_finished`` fires on
+    every busy→idle transition so owners can defer workspace closes until the
+    last reader is done.
     """
 
-    def __init__(self) -> None:
+    worker_finished = Signal()
+
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
         self._workers: List[FunctionWorker] = []
 
     def register(self, worker: FunctionWorker) -> FunctionWorker:
@@ -52,6 +57,11 @@ class WorkerPool:
     def _discard(self, worker: FunctionWorker) -> None:
         if worker in self._workers:
             self._workers.remove(worker)
+        self.worker_finished.emit()
+
+    @property
+    def is_busy(self) -> bool:
+        return any(worker.isRunning() for worker in self._workers)
 
     def wait_all(self, timeout_ms: int = 30000) -> None:
         for worker in list(self._workers):

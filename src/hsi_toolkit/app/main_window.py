@@ -55,6 +55,10 @@ class MainWindow(QMainWindow):
         self._lowres_worker: Optional[FunctionWorker] = None
         self.worker_pool = WorkerPool()
         self._workspace_generation = 0
+        # Workspaces whose memmaps may still be read by background workers;
+        # closed as soon as the last reader finishes (see _flush_pending_closes).
+        self._pending_close: List[HSIWorkspace] = []
+        self.worker_pool.worker_finished.connect(self._flush_pending_closes)
 
         self.preview_panel = PreviewPanel()
         self.preview_panel.annotation_created.connect(self._on_annotation_created)
@@ -68,6 +72,7 @@ class MainWindow(QMainWindow):
 
         self.spectrum_panel = SpectrumPanel()
         self.spectrum_panel.settings_changed.connect(self._update_spectra)
+        self.spectrum_panel.workers_idle.connect(self._flush_pending_closes)
 
         self.setCentralWidget(self.preview_panel)
         self._info_label = QLabel()
@@ -138,6 +143,9 @@ class MainWindow(QMainWindow):
     # -- dataset opening -----------------------------------------------------------
 
     def open_dataset(self) -> None:
+        if self._loader is not None and self._loader.isRunning():
+            self.statusBar().showMessage("Дождитесь завершения загрузки", 3000)
+            return
         dialog = DataDialog(self)
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
@@ -185,12 +193,16 @@ class MainWindow(QMainWindow):
         """Attach a ready workspace and start the low-res preview build."""
         self._workspace_generation += 1
         # Never close the old workspace's memmaps under threads still reading
-        # them: join in-flight spectrum and lowres workers first.
-        self.spectrum_panel.shutdown()
-        if self._lowres_worker is not None and self._lowres_worker.isRunning():
-            self._lowres_worker.wait(60000)
-        if self.workspace is not None:
-            self.workspace.close()
+        # them: cancel in-flight spectrum sweeps without blocking the GUI and
+        # defer the close until the last reader (lowres build, spectrum sweep,
+        # export) finishes. Stale results are dropped by the generation guards.
+        self.spectrum_panel.shutdown(wait=False)
+        old_ws = self.workspace
+        if old_ws is not None:
+            if self._has_active_readers():
+                self._pending_close.append(old_ws)
+            else:
+                old_ws.close()
         self.workspace = ws
         self.annotations = AnnotationSet(image_info=self._image_info())
         self.selected_ids = []
@@ -217,6 +229,17 @@ class MainWindow(QMainWindow):
         )
         self._lowres_worker.failed.connect(self._on_lowres_failed)
         self._lowres_worker.start()
+
+    def _has_active_readers(self) -> bool:
+        return self.worker_pool.is_busy or self.spectrum_panel.is_busy
+
+    def _flush_pending_closes(self) -> None:
+        """Close deferred workspaces once no background reader is running."""
+        if not self._pending_close or self._has_active_readers():
+            return
+        for ws in self._pending_close:
+            ws.close()
+        self._pending_close.clear()
 
     def _on_lowres_ready(self, generation: int) -> None:
         if generation != self._workspace_generation:
@@ -398,6 +421,7 @@ class MainWindow(QMainWindow):
     def closeEvent(self, event) -> None:
         self.spectrum_panel.shutdown()
         self.worker_pool.wait_all(10000)
+        self._flush_pending_closes()
         if self.workspace is not None:
             self.workspace.close()
         super().closeEvent(event)

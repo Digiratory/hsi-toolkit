@@ -6,7 +6,7 @@ import pytest
 from hsi_toolkit.core.annotations import Annotation
 from hsi_toolkit.core.exporter import export_npz, slugify
 
-from conftest import BANDS, WAVELENGTHS
+from conftest import BANDS, WAVELENGTHS, write_envi
 
 
 def _ws(synthetic_dataset):
@@ -95,6 +95,32 @@ class TestExportPolygon:
             cutout[0], synthetic_dataset["cube_raw"][order[0]][4:10, 3:11]
         )
         ws.close()
+
+    def test_raw_export_preserves_float32(self, tmp_path):
+        # Regression: the raw path used to hardcode a uint16 buffer, silently
+        # truncating/wrapping non-uint16 ENVI cubes (e.g. float32 reflectance).
+        from hsi_toolkit.core.dataset import HSIWorkspace
+
+        cube = np.full((BANDS, 16, 16), 0.7, dtype=np.float32)
+        cube[0, 5, 5] = 70000.5  # wrapped modulo 2**16 in the old uint16 buffer
+        hdr = write_envi(tmp_path / "f32.hdr", cube, WAVELENGTHS, envi_data_type=4)
+        ws = HSIWorkspace.open(hdr)
+        try:
+            path = tmp_path / "f32.npz"
+            export_npz(ws, [_polygon()], path, corrected=False)
+            cutout = np.load(path)["01_zona"]
+            assert cutout.dtype == np.float32
+            assert float(cutout.max()) == pytest.approx(70000.5)
+            assert float(cutout.min()) == pytest.approx(0.7)
+
+            path2 = tmp_path / "f32_line.npz"
+            export_npz(ws, [_polyline()], path2, corrected=False)
+            ribbon = np.load(path2)["01_liniya"]
+            assert ribbon.dtype == np.float32
+            assert float(ribbon.max()) == pytest.approx(70000.5)
+            assert float(ribbon.min()) == pytest.approx(0.7)
+        finally:
+            ws.close()
 
 
 class TestExportPolyline:

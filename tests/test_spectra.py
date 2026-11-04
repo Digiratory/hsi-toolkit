@@ -33,6 +33,16 @@ class TestPolylineSamples:
         assert xs[0, 0] == 2 and xs[0, -1] == 12
         np.testing.assert_allclose(positions, np.linspace(0.0, 10.0, 10))
 
+    def test_horizontal_line_even_width(self):
+        # Regression: half-integer offsets + ties-to-even rounding striped the
+        # ribbon at even widths (center row dropped, neighbours duplicated).
+        samples, _ = polyline_samples([(2, 5), (12, 5)], (LINES, SAMPLES), width=10, step=1.0)
+        ys, xs, _ = samples[0]
+        col = ys[:, 0]
+        assert (col == 5).any()  # the line's own row is always sampled
+        assert len(np.unique(col)) == 10  # no row sampled twice
+        assert col.min() == 1 and col.max() == 10  # contiguous band
+
     def test_positions_normalized(self, synthetic_dataset):
         ws = _ws(synthetic_dataset)
         rel, spectra = polyline_profile(ws, [(2, 5), (12, 5)], width=3, step=1.0)

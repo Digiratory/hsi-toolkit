@@ -21,16 +21,18 @@ def write_envi(
     cube: np.ndarray,
     wavelengths=None,
     interleave: str = "bsq",
+    envi_data_type: int = 12,
 ) -> Path:
     """Write a minimal ENVI hdr + raw pair for a (bands, lines, samples) cube."""
     path = Path(path)
     raw_path = path.with_suffix(".raw")
+    dtype = {12: "<u2", 4: "<f4"}[envi_data_type]
     if interleave == "bsq":
-        data = np.ascontiguousarray(cube, dtype="<u2")
+        data = np.ascontiguousarray(cube, dtype=dtype)
     elif interleave == "bil":
-        data = np.ascontiguousarray(np.moveaxis(cube, 1, 0), dtype="<u2")
+        data = np.ascontiguousarray(np.moveaxis(cube, 1, 0), dtype=dtype)
     elif interleave == "bip":
-        data = np.ascontiguousarray(np.moveaxis(cube, 2, 0), dtype="<u2")
+        data = np.ascontiguousarray(np.moveaxis(cube, 2, 0), dtype=dtype)
     else:
         raise ValueError(interleave)
     raw_path.write_bytes(data.tobytes())
@@ -47,7 +49,7 @@ def write_envi(
             f"lines = {lines}",
             f"bands = {bands}",
             "header offset = 0",
-            "data type = 12",
+            f"data type = {envi_data_type}",
             "byte order = 0",
             f"interleave = {interleave}",
             f"data file = {raw_path.name}",

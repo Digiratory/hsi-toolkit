@@ -26,6 +26,7 @@ from PySide6.QtWidgets import (
 from hsi_toolkit.app.workers import FunctionWorker, WorkerPool
 from hsi_toolkit.core.annotations import AnnotationSet
 from hsi_toolkit.core.exporter import export_npz
+from hsi_toolkit.core.spectra import DEFAULT_RIBBON_WIDTH
 
 
 class ExportDialog(QDialog):
@@ -53,7 +54,7 @@ class ExportDialog(QDialog):
             self.list_widget.addItem(item)
 
         self.corrected_radio = QRadioButton("Корректированный куб (float32, 0..1)")
-        self.raw_radio = QRadioButton("Сырой куб (uint16, DN)")
+        self.raw_radio = QRadioButton(f"Сырой куб ({ws.raw_dtype.name}, DN)")
         if ws.has_references:
             self.corrected_radio.setChecked(True)
         else:
@@ -67,7 +68,7 @@ class ExportDialog(QDialog):
 
         self.ribbon_spin = QSpinBox()
         self.ribbon_spin.setRange(1, 101)
-        self.ribbon_spin.setValue(10)
+        self.ribbon_spin.setValue(DEFAULT_RIBBON_WIDTH)
         ribbon_box = QGroupBox("Лента полилиний")
         ribbon_layout = QHBoxLayout(ribbon_box)
         ribbon_layout.addWidget(QLabel("Ширина, пикс:"))

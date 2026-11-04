@@ -1,7 +1,7 @@
 """ENVI HDR file loader returning numpy arrays.
 
-Loads ENVI HDR/RAW hyperspectral cubes and exposes them as numpy arrays
-with helper functions for ROI extraction and spectrum averaging.
+Loads ENVI HDR/RAW hyperspectral cubes as lazily memory-mapped
+:class:`HSIDataset` objects (per-band access via ``get_band``).
 """
 
 from __future__ import annotations
@@ -9,7 +9,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Sequence
 
 import numpy as np
 
@@ -59,36 +59,6 @@ class HSIDataset:
         else:
             raise ValueError(f"Unsupported interleave: {self.interleave}")
         return np.array(band, copy=False)
-
-    def get_datacube(self) -> np.ndarray:
-        if self.interleave == "bsq":
-            return np.array(self.mm, copy=False)
-        elif self.interleave == "bil":
-            return np.array(np.moveaxis(self.mm, 1, 0), copy=False)
-        elif self.interleave == "bip":
-            return np.array(np.moveaxis(self.mm, 2, 0), copy=False)
-        else:
-            raise ValueError(f"Unsupported interleave: {self.interleave}")
-
-    def mean_roi_spectrum(self, x: int, y: int, roi_size: int) -> Tuple[np.ndarray, Tuple[int, int, int, int], int]:
-        x0, y0, x1, y1 = roi_bounds(self, x, y, roi_size)
-        if x1 < x0 or y1 < y0:
-            raise ValueError("empty ROI")
-
-        if self.interleave == "bsq":
-            roi = self.mm[:, y0: y1 + 1, x0: x1 + 1]
-            spectrum = np.asarray(roi, dtype=np.float64).mean(axis=(1, 2))
-        elif self.interleave == "bil":
-            roi = self.mm[y0: y1 + 1, :, x0: x1 + 1]
-            spectrum = np.asarray(roi, dtype=np.float64).mean(axis=(0, 2))
-        elif self.interleave == "bip":
-            roi = self.mm[y0: y1 + 1, x0: x1 + 1, :]
-            spectrum = np.asarray(roi, dtype=np.float64).mean(axis=(0, 1))
-        else:
-            raise ValueError(f"Unsupported interleave: {self.interleave}")
-
-        pixel_count = (x1 - x0 + 1) * (y1 - y0 + 1)
-        return spectrum, (x0, y0, x1, y1), pixel_count
 
 
 def _strip_braces(value: str) -> str:
@@ -240,32 +210,3 @@ def load_hsi_from_hdr(hdr_path: Path | str) -> HSIDataset:
         description=str(info["description"]),
         mm=mm,
     )
-
-
-def normalize_roi_size(value: int) -> int:
-    size = max(1, int(value))
-    if size % 2 == 0:
-        size += 1
-    return size
-
-
-def roi_bounds(dataset: HSIDataset, x: int, y: int, roi_size: int) -> Tuple[int, int, int, int]:
-    size = normalize_roi_size(roi_size)
-    radius = size // 2
-    x0 = max(0, int(x) - radius)
-    y0 = max(0, int(y) - radius)
-    x1 = min(dataset.samples - 1, int(x) + radius)
-    y1 = min(dataset.lines - 1, int(y) + radius)
-    return x0, y0, x1, y1
-
-
-def load_hypercube_raw(hdr_path: str):
-    """ENVI cube sorted by ascending wavelength: (uint16 cube (bands, H, W), wavelengths)."""
-    hdr_data = load_hsi_from_hdr(hdr_path)
-    data_cube = hdr_data.get_datacube()
-    wavelength = np.array(hdr_data.wavelengths)
-    order = np.argsort(wavelength)
-    data_cube = np.ascontiguousarray(data_cube[order])
-    wavelength = wavelength[order]
-    hdr_data.close()
-    return data_cube, wavelength

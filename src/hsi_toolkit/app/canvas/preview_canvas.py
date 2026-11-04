@@ -208,7 +208,8 @@ class PreviewCanvas(QWidget):
             self._polyline_tool.stop()
         else:
             self._polygon_tool.stop()
-        if len(points) >= 3:
+        # Polylines are valid from two vertices; only polygons need three.
+        if len(points) >= (2 if kind == MODE_POLYLINE else 3):
             self.annotation_created.emit(
                 kind, [(float(x), float(y)) for x, y in points]
             )

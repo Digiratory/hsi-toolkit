@@ -44,6 +44,7 @@ def _ci_setting(index: int) -> Tuple[str, tuple]:
 
 class SpectrumPanel(QWidget):
     settings_changed = Signal()
+    workers_idle = Signal()
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -109,10 +110,17 @@ class SpectrumPanel(QWidget):
         self._cache.clear()
         self._invalidate()
 
-    def shutdown(self) -> None:
-        """Request cancellation and wait for running workers (teardown)."""
+    def shutdown(self, wait: bool = True) -> None:
+        """Request cancellation; optionally block until workers finish.
+
+        ``wait=False`` never blocks the GUI thread: cancelled workers keep
+        their slot in ``_running_workers`` until they actually finish, and
+        ``workers_idle`` fires when the last one is done.
+        """
         if self._cancel_current is not None:
             self._cancel_current["cancelled"] = True
+        if not wait:
+            return
         for worker in list(self._running_workers):
             if worker.isRunning():
                 worker.wait(30000)
@@ -209,6 +217,8 @@ class SpectrumPanel(QWidget):
     def _forget_worker(self, worker: FunctionWorker) -> None:
         if worker in self._running_workers:
             self._running_workers.remove(worker)
+        if not self._running_workers:
+            self.workers_idle.emit()
 
     def _invalidate(self) -> None:
         self._result_polygons = None

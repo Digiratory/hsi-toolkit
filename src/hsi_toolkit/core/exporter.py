@@ -117,7 +117,7 @@ def _polygon_arrays(
     mask_full = rasterize(ann, (ws.lines, ws.samples))
     data = np.empty(
         (ws.bands, y1 - y0 + 1, x1 - x0 + 1),
-        dtype=np.float32 if corrected else np.uint16,
+        dtype=np.float32 if corrected else ws.raw_dtype,
     )
     for b in range(ws.bands):
         band = ws.corrected_band(b) if corrected else np.asarray(ws.raw_band(b))

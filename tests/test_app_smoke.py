@@ -356,3 +356,105 @@ def test_spectrum_recompute_skipped_for_same_selection(window, qapp):
     qapp.processEvents()
     assert not win.spectrum_panel._result_lines
     assert not win.spectrum_panel.has_content
+
+
+def test_polyline_tool_two_points(window, qapp, monkeypatch):
+    # Regression: a 2-point polyline finished the tool but was silently
+    # dropped — the polygon's >= 3 gate was applied to polylines too.
+    win, ws, tmp_path = window
+    wait_for(lambda: win.preview_panel.has_image, qapp)
+
+    from PySide6.QtCore import QEvent, QPointF, Qt
+    from PySide6.QtGui import QMouseEvent
+    from PySide6.QtWidgets import QInputDialog
+
+    monkeypatch.setattr(
+        QInputDialog, "getText", staticmethod(lambda *a, **k: ("Линия 1", True))
+    )
+
+    canvas = win.preview_panel.canvas
+    mc = canvas._canvas
+    win._set_tool("polyline")
+    assert canvas.mode == "polyline"
+
+    created = []
+    canvas.annotation_created.connect(lambda k, p: created.append((k, p)))
+
+    def qt(kind, dx, dy):
+        pos = QPointF(dx, dy)
+        ev_type = {
+            "move": QEvent.Type.MouseMove,
+            "press": QEvent.Type.MouseButtonPress,
+            "release": QEvent.Type.MouseButtonRelease,
+            "dbl": QEvent.Type.MouseButtonDblClick,
+        }[kind]
+        buttons = Qt.MouseButton.NoButton if kind == "release" else Qt.MouseButton.LeftButton
+        ev = QMouseEvent(ev_type, pos, pos, Qt.MouseButton.LeftButton, buttons,
+                         Qt.KeyboardModifier.NoModifier)
+        {"press": mc.mousePressEvent, "move": mc.mouseMoveEvent,
+         "release": mc.mouseReleaseEvent, "dbl": mc.mouseDoubleClickEvent}[kind](ev)
+        qapp.processEvents()
+
+    def to_widget(x, y):
+        dx, dy = canvas.ax.transData.transform((x, y))
+        return dx, mc.get_width_height()[1] - dy
+
+    for x, y in [(5, 5), (20, 5)]:
+        dx, dy = to_widget(x, y)
+        qt("move", dx, dy)
+        qt("press", dx, dy)
+        qt("release", dx, dy)
+
+    dx, dy = to_widget(20, 5)
+    qt("move", dx, dy)
+    qt("dbl", dx, dy)
+    qt("release", dx, dy)
+    qapp.processEvents()
+
+    assert created and created[0][0] == "polyline"
+    assert len(created[0][1]) == 2
+    polylines = [a for a in win.annotations if a.kind == "polyline"]
+    assert len(polylines) == 1 and len(polylines[0].points) == 2
+    assert canvas.mode == "select"
+
+
+def test_opening_dataset_during_build_defers_close(window, qapp, monkeypatch):
+    # Regression: apply_workspace used to block the GUI thread joining the
+    # in-flight lowres build; the old workspace close is now deferred instead.
+    win, ws0, tmp_path = window
+    wait_for(lambda: win.preview_panel.has_image, qapp)
+
+    import threading
+
+    from hsi_toolkit.core.dataset import HSIWorkspace
+
+    original = HSIWorkspace.build_lowres_cube
+    release = threading.Event()
+    started = threading.Event()
+
+    def slow_build(self, factor=4):
+        started.set()
+        if not release.wait(10):
+            raise TimeoutError("slow build not released")
+        return original(self, factor=factor)
+
+    monkeypatch.setattr(HSIWorkspace, "build_lowres_cube", slow_build)
+
+    try:
+        hdr = ws0.hdr_path
+        ws1 = HSIWorkspace.open(hdr)
+        win.apply_workspace(ws1)
+        wait_for(lambda: started.is_set(), qapp)  # build in flight
+
+        ws2 = HSIWorkspace.open(hdr)
+        win.apply_workspace(ws2)  # must not block on the running build
+        qapp.processEvents()
+
+        assert win.workspace is ws2
+        assert not ws1._closed and ws1 in win._pending_close
+
+        release.set()
+        wait_for(lambda: ws1._closed, qapp)  # closed once the reader finished
+        assert win.workspace is ws2 and not win.workspace._closed
+    finally:
+        release.set()

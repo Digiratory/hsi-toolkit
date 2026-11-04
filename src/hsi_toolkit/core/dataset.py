@@ -91,6 +91,11 @@ class HSIWorkspace:
     def wavelength_range(self) -> Tuple[float, float]:
         return float(self.wavelengths[0]), float(self.wavelengths[-1])
 
+    @property
+    def raw_dtype(self) -> np.dtype:
+        """Raw cube dtype in native byte order (from the ENVI header)."""
+        return self._cube.dtype.newbyteorder("=")
+
     def raw_band(self, b: int) -> np.ndarray:
         """Raw band ``b`` (sorted by ascending wavelength) as a memmap view."""
         if self._closed:
