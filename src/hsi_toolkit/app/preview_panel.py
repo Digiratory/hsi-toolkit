@@ -1,8 +1,16 @@
-"""Preview panel: display mode, spectral-window sliders, stretch, colormap."""
+"""Preview panel: display mode, spectral-window sliders, stretch, colormap.
+
+In spectral-window mode a strip below the preview shows the integral spectrum
+of the whole image (mean intensity per band) with the active window shaded on
+top; the center/width sliders sit directly under it so the slider positions
+map onto the wavelength axis.
+"""
 
 from __future__ import annotations
 
 import numpy as np
+from matplotlib.figure import Figure
+from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWidgets import (
     QComboBox,
@@ -13,6 +21,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+from typing import Optional
 
 from hsi_toolkit.app.canvas.preview_canvas import PreviewCanvas
 from hsi_toolkit.core import preview as preview_core
@@ -26,6 +35,7 @@ STRETCH_MINMAX = "Min–max"
 CMAPS = ("gray", "viridis", "inferno", "magma", "turbo", "cividis")
 
 DEBOUNCE_MS = 100
+SPECTRUM_STRIP_HEIGHT = 150
 
 
 class PreviewPanel(QWidget):
@@ -38,6 +48,7 @@ class PreviewPanel(QWidget):
         self._ws = None
         self._center_nm = 0.0
         self._width_nm = 0.0
+        self._integral: Optional[np.ndarray] = None
 
         self.canvas = PreviewCanvas()
         self.canvas.annotation_created.connect(self.annotation_created.emit)
@@ -56,16 +67,30 @@ class PreviewPanel(QWidget):
         self.cmap_combo = QComboBox()
         self.cmap_combo.addItems(CMAPS)
 
+        # Integral-spectrum strip with the window overlay (window mode only).
+        self.spectrum_figure = Figure(figsize=(1, 1))
+        self.spectrum_canvas = FigureCanvasQTAgg(self.spectrum_figure)
+        self.spectrum_canvas.setMinimumHeight(SPECTRUM_STRIP_HEIGHT)
+
         controls = QFormLayout()
         controls.addRow("Режим:", self.mode_combo)
-        controls.addRow("Центр λ:", self._slider_row(self.center_slider, self.center_label))
-        controls.addRow("Ширина окна:", self._slider_row(self.width_slider, self.width_label))
         controls.addRow("Растяжение:", self.stretch_combo)
         controls.addRow("Цветовая карта:", self.cmap_combo)
 
         side = QWidget()
         side.setLayout(controls)
-        side.setMaximumWidth(360)
+        side.setMaximumWidth(320)
+
+        sliders = QFormLayout()
+        sliders.addRow("Центр λ:", self._slider_row(self.center_slider, self.center_label))
+        sliders.addRow("Ширина окна:", self._slider_row(self.width_slider, self.width_label))
+
+        bottom = QWidget()
+        bottom_layout = QVBoxLayout(bottom)
+        bottom_layout.setContentsMargins(4, 0, 4, 0)
+        bottom_layout.addWidget(self.spectrum_canvas)
+        bottom_layout.addLayout(sliders)
+        self._bottom = bottom
 
         top = QHBoxLayout()
         top.addWidget(self.canvas, stretch=1)
@@ -74,6 +99,7 @@ class PreviewPanel(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(4, 4, 4, 4)
         layout.addLayout(top)
+        layout.addWidget(bottom)
 
         self._debounce = QTimer(self)
         self._debounce.setSingleShot(True)
@@ -86,6 +112,7 @@ class PreviewPanel(QWidget):
         self.stretch_combo.currentTextChanged.connect(self._on_options_changed)
         self.cmap_combo.currentTextChanged.connect(self._on_options_changed)
         self._set_controls_enabled(False)
+        self._bottom.setVisible(False)
 
     @staticmethod
     def _slider_row(slider: QSlider, label: QLabel) -> QWidget:
@@ -100,6 +127,7 @@ class PreviewPanel(QWidget):
 
     def set_workspace(self, ws) -> None:
         self._ws = ws
+        self._integral = None
         if ws is None:
             self._set_controls_enabled(False)
             self.canvas.show_message("Откройте набор данных (Файл → Открыть…)")
@@ -115,6 +143,7 @@ class PreviewPanel(QWidget):
 
     def refresh(self) -> None:
         """Call when ws.lowres becomes available (rebuild preview)."""
+        self._integral = None  # recomputed from the fresh low-res cube
         if self._ws is not None:
             self.update_preview()
 
@@ -138,6 +167,7 @@ class PreviewPanel(QWidget):
             widget.setEnabled(enabled)
 
     def _on_mode_changed(self, _text: str) -> None:
+        self._bottom.setVisible(self.mode_combo.currentText() == MODE_WINDOW)
         self.update_preview()
 
     def _on_slider_changed(self, _value: int) -> None:
@@ -163,18 +193,59 @@ class PreviewPanel(QWidget):
             else (2.0, 98.0)
         )
 
+    def _integral_spectrum(self, ws) -> np.ndarray:
+        """Mean intensity per band over the whole low-res cube: (B,)."""
+        if self._integral is None:
+            source = ws.lowres if ws.lowres is not None else None
+            if source is None:
+                return np.asarray(ws.wavelengths) * np.nan  # placeholder shape
+            self._integral = np.asarray(source.mean(axis=(1, 2)), dtype=np.float64)
+        return self._integral
+
+    def _draw_spectrum_strip(self, ws) -> None:
+        """Integral spectrum with the active window shaded on top."""
+        integral = self._integral_spectrum(ws)
+        self.spectrum_figure.clf()
+        ax = self.spectrum_figure.add_subplot(1, 1, 1)
+        wavelengths = np.asarray(ws.wavelengths, dtype=np.float64)
+        valid = np.isfinite(integral)
+        if valid.any():
+            ax.fill_between(wavelengths[valid], integral[valid], 0, color="#888888", alpha=0.35)
+            ax.plot(wavelengths[valid], integral[valid], color="#555555", linewidth=1.0)
+
+        lo = self._center_nm - self._width_nm / 2.0
+        hi = self._center_nm + self._width_nm / 2.0
+        ax.axvspan(lo, hi, color="#1f77b4", alpha=0.22)
+        ax.axvline(self._center_nm, color="#1f77b4", linewidth=1.2)
+
+        # Pseudo-RGB channel positions for reference.
+        for target, color in ((650.0, "#d62728"), (550.0, "#2ca02c"), (450.0, "#1f77b4")):
+            wl = float(ws.wavelengths[ws.band_index_near(target)])
+            ax.axvline(wl, color=color, linewidth=1.0, linestyle="--", alpha=0.8)
+
+        wl_min, wl_max = ws.wavelength_range
+        ax.set_xlim(wl_min, wl_max)
+        ax.set_ylim(bottom=0)
+        ax.set_xlabel("λ, нм", fontsize=8)
+        ax.set_ylabel("Средняя интенсивность", fontsize=8)
+        ax.tick_params(labelsize=8)
+        self.spectrum_figure.tight_layout(pad=0.8)
+        self.spectrum_canvas.draw_idle()
+
     def update_preview(self) -> None:
         ws = self._ws
         if ws is None:
             return
         self._update_slider_labels()
+        window_mode = self.mode_combo.currentText() == MODE_WINDOW
+        self._bottom.setVisible(window_mode)
         if ws.lowres is None:
             self.canvas.show_message("Строится уменьшенный куб для предпросмотра…")
             return
         # Data coordinates stay in full-resolution pixels even though the
         # displayed cube is downsampled, so annotations always align.
         extent = (-0.5, ws.samples - 0.5, ws.lines - 0.5, -0.5)
-        if self.mode_combo.currentText() == MODE_RGB:
+        if not window_mode:
             image = preview_core.pseudo_rgb(ws, stretch=self._stretch)
         else:
             image = preview_core.window_preview(
@@ -184,4 +255,5 @@ class PreviewPanel(QWidget):
                 stretch=self._stretch,
                 cmap=self.cmap_combo.currentText(),
             )
+            self._draw_spectrum_strip(ws)
         self.canvas.set_image(image, extent=extent)

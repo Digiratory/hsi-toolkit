@@ -143,6 +143,38 @@ def test_canvas_selection_and_delete(window, qapp):
     assert win.selected_ids == []
 
 
+def test_window_mode_spectrum_strip(window, qapp):
+    win, ws, tmp_path = window
+    wait_for(lambda: win.preview_panel.has_image, qapp)
+    panel = win.preview_panel
+
+    # RGB mode (default): the spectrum strip is hidden.
+    assert not panel._bottom.isVisibleTo(panel)
+
+    # Switch to window mode: strip shows the integral spectrum with shading.
+    panel.mode_combo.setCurrentText("Спектральное окно")
+    qapp.processEvents()
+    assert panel._bottom.isVisibleTo(panel)
+    panel._draw_spectrum_strip(ws)
+    ax = panel.spectrum_figure.axes[0]
+    spans = [p for p in ax.patches]
+    assert spans, "window shading must be present"
+    span_x0 = spans[0].get_x()
+    assert ax.get_xlim()[0] <= span_x0 < ax.get_xlim()[1]
+
+    # Moving the center slider moves the shaded window.
+    panel.center_slider.setValue(int(panel.center_slider.minimum()) + 2)
+    panel.update_preview()
+    qapp.processEvents()
+    new_span_x0 = panel.spectrum_figure.axes[0].patches[0].get_x()
+    assert new_span_x0 != span_x0
+
+    # Back to RGB: strip hides again.
+    panel.mode_combo.setCurrentText("Псевдо-RGB")
+    qapp.processEvents()
+    assert not panel._bottom.isVisibleTo(panel)
+
+
 def test_tool_mode_switch(window, qapp):
     win, ws, tmp_path = window
     canvas = win.preview_panel.canvas
