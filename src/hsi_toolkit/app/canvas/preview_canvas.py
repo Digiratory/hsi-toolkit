@@ -70,10 +70,16 @@ class PreviewCanvas(QWidget):
         self._overlay_artists: dict = {}
         self._selected_id = ""
         self._mode = MODE_SELECT
-        self._polygon_selector = None
-        self._polyline_tool = PolylineTool(self)
-        self._polyline_tool.finished.connect(self._on_polyline_finished)
-        self._polyline_tool.cancelled.connect(self.tool_cancelled.emit)
+        self._polyline_tool = PolylineTool(self, min_points=2, closed=False)
+        self._polygon_tool = PolylineTool(self, min_points=3, closed=True)
+        for tool, kind in (
+            (self._polyline_tool, MODE_POLYLINE),
+            (self._polygon_tool, MODE_POLYGON),
+        ):
+            tool.finished.connect(
+                lambda points, tool_kind=kind: self._on_tool_finished(tool_kind, points)
+            )
+            tool.cancelled.connect(self.tool_cancelled.emit)
         self._canvas.mpl_connect("button_press_event", self._on_button_press)
         self.show_message("Откройте набор данных (Файл → Открыть…)")
 
@@ -170,12 +176,12 @@ class PreviewCanvas(QWidget):
         return self._mode
 
     def set_mode(self, mode: str) -> None:
-        self._deactivate_polygon_selector()
         self._polyline_tool.stop()
+        self._polygon_tool.stop()
         self._mode = mode
         self._toolbar.setEnabled(mode == MODE_SELECT)
         if mode == MODE_POLYGON:
-            self._start_polygon_selector()
+            self._polygon_tool.start()
         elif mode == MODE_POLYLINE:
             self._polyline_tool.start()
         else:
@@ -185,34 +191,15 @@ class PreviewCanvas(QWidget):
         shape = Qt.CursorShape.CrossCursor if drawing else Qt.CursorShape.ArrowCursor
         self._canvas.setCursor(QCursor(shape))
 
-    def _start_polygon_selector(self) -> None:
-        from matplotlib.widgets import PolygonSelector
-
-        props = dict(
-            color="#d62728", linewidth=1.5, marker="o", markersize=4.0,
-            markerfacecolor="white", markeredgecolor="#d62728",
-        )
-        self._polygon_selector = PolygonSelector(
-            self.ax, self._on_polygon_selected, props=props
-        )
-
-    def _deactivate_polygon_selector(self) -> None:
-        if self._polygon_selector is not None:
-            self._polygon_selector.set_visible(False)
-            self._polygon_selector.disconnect_events()
-            self._polygon_selector = None
-            self._canvas.draw_idle()
-
-    def _on_polygon_selected(self, verts) -> None:
-        self._deactivate_polygon_selector()
-        if len(verts) >= 3:
+    def _on_tool_finished(self, kind: str, points) -> None:
+        if kind == MODE_POLYLINE:
+            self._polyline_tool.stop()
+        else:
+            self._polygon_tool.stop()
+        if len(points) >= 3:
             self.annotation_created.emit(
-                MODE_POLYGON, [(float(x), float(y)) for x, y in verts]
+                kind, [(float(x), float(y)) for x, y in points]
             )
-
-    def _on_polyline_finished(self, points) -> None:
-        self._polyline_tool.stop()
-        self.annotation_created.emit(MODE_POLYLINE, [tuple(p) for p in points])
 
     # -- selection ----------------------------------------------------------
 

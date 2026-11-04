@@ -1,8 +1,9 @@
-"""Interactive polyline drawing tool.
+"""Interactive vertex-based drawing tools (polygon and polyline).
 
 Click adds a vertex, press+drag on an existing vertex edits it, Backspace
-removes the last vertex, Enter or double-click finishes (>= 2 points),
-Escape cancels. Vertices are stored in data (image pixel) coordinates.
+removes the last vertex, Enter or double-click finishes (>= ``min_points``
+points), Escape cancels. Vertices are stored in data (image pixel)
+coordinates. Both tools share one implementation so their UX is identical.
 """
 
 from __future__ import annotations
@@ -18,12 +19,16 @@ DRAG_RADIUS_PX = 8.0
 
 
 class PolylineTool(QObject):
+    """Vertex tool; ``min_points=3, closed=True`` turns it into a polygon tool."""
+
     finished = Signal(list)
     cancelled = Signal()
 
-    def __init__(self, owner) -> None:
+    def __init__(self, owner, min_points: int = 2, closed: bool = False) -> None:
         super().__init__(owner)
         self._owner = owner  # PreviewCanvas: provides .ax, ._canvas, set_cursor()
+        self._min_points = max(int(min_points), 2)
+        self._closed = bool(closed)
         self._active = False
         self._points: List[Point] = []
         self._drag_idx = -1
@@ -147,8 +152,11 @@ class PolylineTool(QObject):
     def _update_line_artist(self) -> None:
         if self._line is None:
             return
-        if self._points:
-            xs, ys = zip(*self._points)
+        pts = list(self._points)
+        if self._closed and len(pts) >= 3:
+            pts = pts + [pts[0]]  # show the closing edge while drawing
+        if pts:
+            xs, ys = zip(*pts)
         else:
             xs, ys = [], []
         self._line.set_data(xs, ys)
@@ -158,9 +166,9 @@ class PolylineTool(QObject):
         # A double-click first appends a duplicate vertex: drop it.
         if len(points) >= 2 and np.allclose(points[-1], points[-2]):
             points.pop()
-        if len(points) >= 2:
+        if len(points) >= self._min_points:
             self.finished.emit(points)
         else:
-            # Not enough points: notify the owner so it leaves polyline mode.
+            # Not enough points: notify the owner so it leaves the draw mode.
             self.cancelled.emit()
             self.stop()

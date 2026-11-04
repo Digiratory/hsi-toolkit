@@ -160,6 +160,71 @@ def test_data_dialog_constructs(window, qapp):
     assert labels == ["Выбор", "Полигон", "Полилиния"]
 
 
+def test_polygon_tool_draws(window, qapp, monkeypatch):
+    # Regression: matplotlib PolygonSelector could not be completed by a
+    # double-click; the custom polygon tool must finish on double-click
+    # anywhere with >= 3 vertices, same as the polyline tool.
+    win, ws, tmp_path = window
+    wait_for(lambda: win.preview_panel.has_image, qapp)
+
+    from PySide6.QtCore import QEvent, QPointF, Qt
+    from PySide6.QtGui import QMouseEvent
+
+    QInputDialog_getText = (
+        lambda *a, **k: ("Тестовый полигон", True)
+    )
+    from PySide6.QtWidgets import QInputDialog
+
+    monkeypatch.setattr(QInputDialog, "getText", staticmethod(QInputDialog_getText))
+
+    canvas = win.preview_panel.canvas
+    mc = canvas._canvas
+    win._set_tool("polygon")
+    assert canvas.mode == "polygon"
+
+    created = []
+    canvas.annotation_created.connect(lambda k, p: created.append((k, p)))
+
+    def qt(kind, dx, dy):
+        pos = QPointF(dx, dy)
+        ev_type = {
+            "move": QEvent.Type.MouseMove,
+            "press": QEvent.Type.MouseButtonPress,
+            "release": QEvent.Type.MouseButtonRelease,
+            "dbl": QEvent.Type.MouseButtonDblClick,
+        }[kind]
+        buttons = Qt.MouseButton.NoButton if kind == "release" else Qt.MouseButton.LeftButton
+        ev = QMouseEvent(ev_type, pos, pos, Qt.MouseButton.LeftButton, buttons,
+                         Qt.KeyboardModifier.NoModifier)
+        {"press": mc.mousePressEvent, "move": mc.mouseMoveEvent,
+         "release": mc.mouseReleaseEvent, "dbl": mc.mouseDoubleClickEvent}[kind](ev)
+        qapp.processEvents()
+
+    def to_widget(x, y):
+        dx, dy = canvas.ax.transData.transform((x, y))
+        return dx, mc.get_width_height()[1] - dy
+
+    for x, y in [(5, 5), (20, 5), (20, 15)]:
+        dx, dy = to_widget(x, y)
+        qt("move", dx, dy)
+        qt("press", dx, dy)
+        qt("release", dx, dy)
+
+    # Double-click at the LAST vertex (not the first) must close the polygon.
+    dx, dy = to_widget(20, 15)
+    qt("move", dx, dy)
+    qt("dbl", dx, dy)
+    qt("release", dx, dy)
+    qapp.processEvents()
+
+    assert created and created[0][0] == "polygon"
+    assert len(created[0][1]) == 3
+    polygon = win.annotations.get([a.id for a in win.annotations][-1])
+    assert polygon is not None and polygon.kind == "polygon"
+    assert len(polygon.points) == 3
+    assert canvas.mode == "select"
+
+
 def test_preview_image_not_flipped(qapp):
     from hsi_toolkit.app.canvas.preview_canvas import PreviewCanvas
 
