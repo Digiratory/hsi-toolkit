@@ -31,6 +31,8 @@ MANIFEST
 #   before PyInstaller builds the exe, so as to inject date/other infos into it.
 *.manifest
 *.spec
+# ...except the hand-maintained build spec that is part of the repo.
+!hsi-toolkit.spec
 
 # Installer logs
 pip-log.txt

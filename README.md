@@ -52,6 +52,27 @@ hypercube_2026-10-23_18-02-43/          # плоская
     <куб>.hdr|.raw, WHITEREF_*.hdr, DARKREF_*.hdr
 ```
 
+## Сборка exe (PyInstaller)
+
+Сборка выполняется через `.spec`-файл (`hsi-toolkit.spec`, single-file exe,
+оконное приложение без консоли):
+
+```powershell
+uv add --dev pyinstaller      # один раз; pyinstaller уже в dev-зависимостях
+uv run pyinstaller --noconfirm hsi-toolkit.spec
+```
+
+Результат: `dist\hsi-toolkit.exe` — самодостаточный файл, можно переносить на
+другую машину с Windows 10+ (Python и зависимости не нужны). Каталоги
+`build\` и `dist\` игнорируются git'ом; сам `hsi-toolkit.spec` хранится в
+репозитории — правьте его при изменении состава приложения (например, при
+добавлении иконки: параметр `icon=[...]` в секции `EXE`).
+
+Примечания:
+- `mpl_toolkits.mplot3d` (3D-графики спектров полилиний) подключается
+  динамически, поэтому перечислен в `hiddenimports` spec-файла.
+- Для проверки сборки без дисплея: `QT_QPA_PLATFORM=offscreen dist\hsi-toolkit.exe`.
+
 ## Разработка
 
 ```powershell
