@@ -64,11 +64,11 @@ def test_smoke_workflow(window, qapp):
     win.add_annotation(polygon)
     win.add_annotation(line)
 
-    # Multi-select -> spectra computed in a background worker
-    win.annotation_panel.set_selection(["t1", "t2"])
-    win._on_selection_changed(["t1", "t2"])
+    # Visible annotations are plotted automatically (per-object cache)
     wait_for(lambda: not win.spectrum_panel.is_busy, qapp)
     assert win.spectrum_panel.has_content
+    assert [r[0] for r in win.spectrum_panel._result_polygons] == ["t1"]
+    assert [r[0] for r in win.spectrum_panel._result_lines] == ["t2"]
 
     # 3D view toggle
     win.spectrum_panel.view_combo.setCurrentText("3D")
@@ -248,17 +248,26 @@ def test_spectrum_recompute_skipped_for_same_selection(window, qapp):
     )
     win.add_annotation(line)
     wait_for(lambda: not win.spectrum_panel.is_busy, qapp)
-    workers_before = len(win.spectrum_panel._running_workers)
+    assert win.spectrum_panel._result_lines is not None
     result_before = win.spectrum_panel._result_lines
+    workers_before = len(win.spectrum_panel._running_workers)
 
-    # Same geometry + settings: must redraw from cache, not spawn a worker.
-    win._on_selection_changed(["d1"])
+    # Same visible set: served from the per-object cache, no new worker.
+    win._update_spectra()
     qapp.processEvents()
-    assert win.spectrum_panel._result_lines is result_before
+    assert win.spectrum_panel._result_lines == result_before
     assert len(win.spectrum_panel._running_workers) == workers_before
 
     # Changed geometry must recompute.
     line.points = [(2.0, 5.0), (25.0, 5.0)]
-    win._on_selection_changed(["d1"])
+    win._update_spectra()
     wait_for(lambda: not win.spectrum_panel.is_busy, qapp)
     assert win.spectrum_panel._result_lines is not result_before
+    assert win.spectrum_panel._result_lines[0][1][-1] == 1.0
+
+    # Unchecking visibility removes the object from the plot without workers.
+    line.visible = False
+    win._on_annotation_changed(line.id)
+    qapp.processEvents()
+    assert not win.spectrum_panel._result_lines
+    assert not win.spectrum_panel.has_content

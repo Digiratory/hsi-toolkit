@@ -265,6 +265,7 @@ class MainWindow(QMainWindow):
         self.preview_panel.canvas.set_annotations(self.annotations)
         self.annotation_panel.set_selection([annotation.id])
         self._on_selection_changed([annotation.id])
+        self._update_spectra()
         return annotation
 
     def _on_annotation_created(self, kind: str, points) -> None:
@@ -292,19 +293,22 @@ class MainWindow(QMainWindow):
         self._on_selection_changed(ids)
 
     def _on_selection_changed(self, ids) -> None:
+        # Selection drives editing (fields) and canvas highlight; the spectra
+        # panel follows the visibility checkboxes instead.
         self.selected_ids = list(ids)
         self.preview_panel.canvas.set_selected(ids[-1] if ids else "")
-        annotations = [
-            self.annotations.get(i) for i in ids if self.annotations.get(i) is not None
-        ]
+
+    def _update_spectra(self) -> None:
+        """Plot every visible (checked) annotation; cache skips unchanged ones."""
+        annotations = [a for a in self.annotations if a.visible]
         self.spectrum_panel.update_spectra(annotations)
 
     def _on_annotation_changed(self, _annotation_id: str) -> None:
         self.preview_panel.canvas.set_annotations(self.annotations)
         self.annotation_panel.refresh()
-        # Names/colors/visibility affect only rendering — redraw the cached
-        # spectra without recomputing them.
-        self.spectrum_panel.refresh_annotations()
+        # Visibility toggles change what is plotted; name/comment edits only
+        # need a cached redraw (no recomputation).
+        self._update_spectra()
 
     def _on_annotations_deleted(self, ids) -> None:
         for annotation_id in ids:
@@ -313,7 +317,7 @@ class MainWindow(QMainWindow):
         self.annotation_panel.refresh()
         self.preview_panel.canvas.set_annotations(self.annotations)
         self.preview_panel.canvas.set_selected("")
-        self.spectrum_panel.update_spectra([])
+        self._update_spectra()
 
     def _set_tool(self, mode: str) -> None:
         self.preview_panel.set_mode(mode)
@@ -374,7 +378,7 @@ class MainWindow(QMainWindow):
         self.preview_panel.canvas.set_annotations(self.annotations)
         self.preview_panel.canvas.set_selected("")
         self.spectrum_panel.set_annotation_source(self.annotations)
-        self.spectrum_panel.update_spectra([])
+        self._update_spectra()
 
     # -- export -----------------------------------------------------------------
 

@@ -47,8 +47,8 @@ class SpectrumPanel(QWidget):
         self._running_workers: list = []
         self._result_polygons: Optional[list] = None
         self._result_lines: Optional[list] = None
-        self._last_signature = None
         self._cancel_current: Optional[dict] = None
+        self._cache: dict = {}
 
         self.view_combo = QComboBox()
         self.view_combo.addItems([VIEW_3D, VIEW_WATERFALL])
@@ -77,7 +77,7 @@ class SpectrumPanel(QWidget):
         self.view_combo.currentIndexChanged.connect(self._redraw)
         self.waterfall_combo.currentTextChanged.connect(self._redraw)
         self.ci_combo.currentIndexChanged.connect(self._redraw)
-        self.show_message("Выберите объекты для просмотра спектров")
+        self.show_message("Нет видимых объектов — отметьте их галочкой в списке")
 
     # -- public ---------------------------------------------------------------
 
@@ -92,6 +92,7 @@ class SpectrumPanel(QWidget):
     def set_workspace(self, ws) -> None:
         self._generation += 1
         self._ws = ws
+        self._cache.clear()
         self._invalidate()
 
     def shutdown(self) -> None:
@@ -103,7 +104,14 @@ class SpectrumPanel(QWidget):
                 worker.wait(30000)
         self._running_workers.clear()
 
+    @staticmethod
+    def _object_key(ws, ann: Annotation, stat: str, ci) -> tuple:
+        """Cache key: one computed spectrum per object geometry + settings."""
+        key_extra = (POLYLINE_RIBBON,) if ann.kind == "polyline" else ()
+        return (id(ws), ann.id, ann.kind, tuple(map(tuple, ann.points)), stat, ci) + key_extra
+
     def update_spectra(self, annotations: List[Annotation]) -> None:
+        """Plot the given (visible) annotations, recomputing only uncached ones."""
         self._generation += 1
         generation = self._generation
         if self._ws is None or not annotations:
@@ -115,22 +123,31 @@ class SpectrumPanel(QWidget):
             self._invalidate()
             return
         stat, ci = _ci_setting(self.ci_combo.currentIndex())
-        # Skip recomputation when the selection geometry and settings are
-        # unchanged (e.g., re-clicking the same object).
-        signature = (
-            id(self._ws),
-            tuple((a.id, a.kind, tuple(a.points)) for a in annotations),
-            stat,
-            ci,
-        )
-        if (
-            signature == self._last_signature
-            and (self._result_polygons is not None or self._result_lines is not None)
-        ):
-            self._generation -= 1  # let the in-flight (identical) result apply
+        ws_id = id(self._ws)
+        requested_keys = {self._object_key(self._ws, a, stat, ci) for a in annotations}
+        for key in [k for k in self._cache if k[0] == ws_id and k not in requested_keys]:
+            del self._cache[key]  # drop deleted/hidden objects and stale settings
+
+        cached_polygons: List[tuple] = []
+        cached_lines: List[tuple] = []
+        missing: List[Annotation] = []
+        for ann in annotations:
+            key = self._object_key(self._ws, ann, stat, ci)
+            hit = self._cache.get(key)
+            if hit is None:
+                missing.append(ann)
+            elif ann.kind == "polygon":
+                cached_polygons.append((ann.id, *hit))
+            else:
+                cached_lines.append((ann.id, *hit))
+
+        if not missing:
+            # Everything cached (e.g., a checkbox toggled back on): no compute.
+            self._cancel_current = None
+            self._result_polygons, self._result_lines = cached_polygons, cached_lines
             self._redraw()
             return
-        self._last_signature = signature
+
         # Ask a superseded computation to stop between bands.
         if self._cancel_current is not None:
             self._cancel_current["cancelled"] = True
@@ -140,29 +157,25 @@ class SpectrumPanel(QWidget):
         ws = self._ws
 
         def compute(progress):
-            polygons_out = []
-            for i, ann in enumerate(polygons):
+            computed = {}
+            for i, ann in enumerate(missing):
                 if cancel["cancelled"]:
                     return None
                 progress.emit(
-                    int(50 * i / max(len(polygons), 1)), f"Полигон {ann.name}"
+                    int(50 * i / max(len(missing), 1)), f"Объект {ann.name}"
                 )
-                mask = rasterize(ann, (ws.lines, ws.samples))
-                center, lower, upper = polygon_spectrum_stats(ws, mask, stat, ci)
-                polygons_out.append((ann.id, center, lower, upper))
-            lines_out = []
-            for i, ann in enumerate(lines):
-                if cancel["cancelled"]:
-                    return None
-                progress.emit(
-                    50 + int(50 * i / max(len(lines), 1)), f"Линия {ann.name}"
-                )
-                rel, spectra = polyline_profile(
-                    ws, ann.points, width=POLYLINE_RIBBON, step=1.0
-                )
-                lines_out.append((ann.id, rel, spectra))
+                key = self._object_key(ws, ann, stat, ci)
+                if ann.kind == "polygon":
+                    mask = rasterize(ann, (ws.lines, ws.samples))
+                    center, lower, upper = polygon_spectrum_stats(ws, mask, stat, ci)
+                    computed[key] = (center, lower, upper)
+                else:
+                    rel, spectra = polyline_profile(
+                        ws, ann.points, width=POLYLINE_RIBBON, step=1.0
+                    )
+                    computed[key] = (rel, spectra)
             progress.emit(100, "Готово")
-            return polygons_out, lines_out
+            return computed
 
         self._worker = FunctionWorker(compute)
         self._running_workers.append(self._worker)
@@ -170,32 +183,41 @@ class SpectrumPanel(QWidget):
             lambda worker=self._worker: self._forget_worker(worker)
         )
         self._worker.finished_ok.connect(
-            lambda result, gen=generation: self._on_computed(gen, result)
+            lambda result, gen=generation, req=list(annotations): self._on_computed(
+                gen, result, req
+            )
         )
         self._worker.failed.connect(
             lambda message, gen=generation: self._on_failed(gen, message)
         )
         self._worker.start()
 
-    def refresh_annotations(self) -> None:
-        """Redraw cached results with current names/colors (no recompute)."""
-        if self._result_polygons or self._result_lines:
-            self._redraw()
-
     def _forget_worker(self, worker: FunctionWorker) -> None:
         if worker in self._running_workers:
             self._running_workers.remove(worker)
 
     def _invalidate(self) -> None:
-        self._last_signature = None
         self._result_polygons = None
         self._result_lines = None
         self._redraw()
 
-    def _on_computed(self, generation: int, result) -> None:
+    def _on_computed(self, generation: int, result, requested: List[Annotation]) -> None:
         if generation != self._generation or result is None:
             return
-        self._result_polygons, self._result_lines = result
+        if self._ws is None:
+            return
+        self._cache.update(result)
+        stat, ci = _ci_setting(self.ci_combo.currentIndex())
+        self._result_polygons = [
+            (a.id, *self._cache[self._object_key(self._ws, a, stat, ci)])
+            for a in requested
+            if a.kind == "polygon" and self._object_key(self._ws, a, stat, ci) in self._cache
+        ]
+        self._result_lines = [
+            (a.id, *self._cache[self._object_key(self._ws, a, stat, ci)])
+            for a in requested
+            if a.kind == "polyline" and self._object_key(self._ws, a, stat, ci) in self._cache
+        ]
         self._redraw()
 
     def _on_failed(self, generation: int, message: str) -> None:
@@ -219,7 +241,7 @@ class SpectrumPanel(QWidget):
         elif self._result_polygons:
             self._draw_polygons(self._result_polygons)
         else:
-            self.show_message("Выберите объекты для просмотра спектров")
+            self.show_message("Нет видимых объектов — отметьте их галочкой в списке")
 
     def _draw_polygons(self, results: list) -> None:
         self.figure.clf()
