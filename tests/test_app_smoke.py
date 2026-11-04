@@ -146,6 +146,20 @@ def test_tool_mode_switch(window, qapp):
     assert not canvas._polyline_tool.active
 
 
+def test_data_dialog_constructs(window, qapp):
+    # Regression: missing QWidget import crashed Файл → Открыть…
+    from hsi_toolkit.app.data_dialog import DataDialog
+    from PySide6.QtWidgets import QToolBar
+
+    win, ws, tmp_path = window
+    dialog = DataDialog(win)
+    assert dialog.cube_path is None
+    tools = [b for b in win.findChildren(QToolBar) if b.windowTitle() == "Инструменты"]
+    assert len(tools) == 1
+    labels = [a.text() for a in tools[0].actions()]
+    assert labels == ["Выбор", "Полигон", "Полилиния"]
+
+
 def test_preview_image_not_flipped(qapp):
     from hsi_toolkit.app.canvas.preview_canvas import PreviewCanvas
 

@@ -96,10 +96,6 @@ class MainWindow(QMainWindow):
         return dock
 
     def _build_toolbar(self) -> None:
-        toolbar = QToolBar("Главная")
-        toolbar.setMovable(False)
-        self.addToolBar(toolbar)
-
         act_open = QAction("Открыть…", self)
         act_open.triggered.connect(self.open_dataset)
         act_save = QAction("Сохранить разметку", self)
@@ -108,12 +104,18 @@ class MainWindow(QMainWindow):
         act_load.triggered.connect(self.load_annotations)
         act_export = QAction("Экспорт NPZ…", self)
         act_export.triggered.connect(self.export_npz)
-        for action in (act_open, act_save, act_load, act_export):
-            toolbar.addAction(action)
         self._act_save = act_save
         self._act_export = act_export
 
-        toolbar.addSeparator()
+        menu = self.menuBar().addMenu("Файл")
+        menu.addAction(act_open)
+        menu.addAction(act_save)
+        menu.addAction(act_load)
+        menu.addAction(act_export)
+
+        toolbar = QToolBar("Инструменты")
+        toolbar.setMovable(False)
+        self.addToolBar(toolbar)
         self._tool_actions = {}
         tool_group = QActionGroup(self)
         tool_group.setExclusive(True)
@@ -131,12 +133,6 @@ class MainWindow(QMainWindow):
             toolbar.addAction(action)
             self._tool_actions[mode] = action
         self._tool_actions[MODE_SELECT].setChecked(True)
-
-        menu = self.menuBar().addMenu("Файл")
-        menu.addAction(act_open)
-        menu.addAction(act_save)
-        menu.addAction(act_load)
-        menu.addAction(act_export)
 
     # -- dataset opening -----------------------------------------------------------
 

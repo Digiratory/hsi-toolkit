@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QToolButton,
     QVBoxLayout,
+    QWidget,
 )
 
 from hsi_toolkit.core.annotations import annotations_path_for
@@ -63,7 +64,7 @@ class DataDialog(QDialog):
         buttons.rejected.connect(self.reject)
 
         layout = QVBoxLayout(self)
-        layout.setMinimumWidth(560)
+        self.setMinimumWidth(560)
         layout.addLayout(grid)
         layout.addWidget(self.auto_button)
         layout.addWidget(buttons)
