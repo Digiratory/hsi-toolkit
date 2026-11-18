@@ -151,17 +151,11 @@ def polyline_profile(
     return positions.astype(np.float64), spectra
 
 
-def polygon_spectrum_stats(
-    ws,
-    mask: np.ndarray,
-    stat: str = "median",
-    ci: CI = (25.0, 75.0),
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Per-band center + interval statistics over the masked pixels.
+def mask_band_values(ws, mask: np.ndarray) -> np.ndarray:
+    """Working values of the masked pixels for every band: (B, n_pixels).
 
-    ``stat``: ``"median"`` or ``"mean"``. ``ci``: ``(p_lo, p_hi)`` percentiles
-    (for ``"median"`` typically ``(25, 75)`` IQR) or ``("std", k)`` for the
-    mean ± ``k``·std interval. Returns ``(center (B,), lower (B,), upper (B,))``.
+    ``working_band`` is corrected (float32, 0..1) when references exist,
+    raw (float32) otherwise — the same values the spectra panel plots.
     """
     mask = np.asarray(mask, dtype=bool)
     if mask.shape != (ws.lines, ws.samples):
@@ -174,6 +168,22 @@ def polygon_spectrum_stats(
     values = np.empty((ws.bands, n_pixels), dtype=np.float32)
     for b in range(ws.bands):
         values[b] = ws.working_band(b)[mask]
+    return values
+
+
+def polygon_spectrum_stats(
+    ws,
+    mask: np.ndarray,
+    stat: str = "median",
+    ci: CI = (25.0, 75.0),
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Per-band center + interval statistics over the masked pixels.
+
+    ``stat``: ``"median"`` or ``"mean"``. ``ci``: ``(p_lo, p_hi)`` percentiles
+    (for ``"median"`` typically ``(25, 75)`` IQR) or ``("std", k)`` for the
+    mean ± ``k``·std interval. Returns ``(center (B,), lower (B,), upper (B,))``.
+    """
+    values = mask_band_values(ws, mask)
     if stat == "median":
         center = np.median(values, axis=1)
         lower, upper = _percentile_interval(values, ci)

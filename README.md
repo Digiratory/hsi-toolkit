@@ -26,6 +26,17 @@
   умолчанию, 2.5–97.5 или mean±3σ) одним графиком, свой цвет на объект;
   полилинии → 3D-поверхность (позиция × λ) или водопад (карта/трассы),
   подграфик на линию. Спектры считаются по полному разрешению.
+- **Статистика** (вкладка в нижнем доке): попарные сравнения видимых
+  полигонов-ROI по каждому каналу — ΔR, ΔR/R эталона (%), медианы и ΔR медиан,
+  Cohen's d, Mann–Whitney U или t-тест Уэлча, AUC ROC (U₁/(n₁·n₂)), поправка на
+  множественные сравнения (Холм / FDR Бенджамини–Хохберга / без) на всю семью
+  (каналы × пары), α = 0.05/0.01/0.001. Таблица «каналы × пары» со
+  значимыми ячейками (p_adj < α) подсвеченными фоном; тултип ячейки — полный
+  набор метрик. Выбор эталонной зоны (по умолчанию первая); экспорт CSV
+  (utf-8-sig) и XLSX. Значения берутся из `working_band` (corrected при
+  наличии референсов, иначе raw) — те же, что в панели «Спектры».
+  Пиксели внутри полигона считаются независимыми выборками: пространственная
+  автокорреляция завышает значимость.
 - **Сохранение/загрузка разметки**: JSON `hsi-toolkit.annotations/1`, по
   умолчанию `<куб>.annotations.json`.
 - **Экспорт NPZ**: участки изображения + маски — полигон → bbox-вырезка куба
@@ -76,7 +87,7 @@ uv run pyinstaller --noconfirm hsi-toolkit.spec
 ## Разработка
 
 ```powershell
-uv sync                 # зависимости (numpy, matplotlib, PySide6)
+uv sync                 # зависимости (numpy, scipy, matplotlib, PySide6, openpyxl)
 uv run pytest           # тесты ядра + offscreen smoke-тест GUI
 ```
 
@@ -90,6 +101,7 @@ src/hsi_toolkit/
     preview.py          # pseudo_rgb(), window_preview()
     annotations.py      # Annotation/AnnotationSet, JSON, растеризация
     spectra.py          # статистики полигонов, профиль полилинии (порт ноутбука)
+    stats.py            # pairwise_roi_stats: тесты, поправки, экспорт CSV/XLSX
     exporter.py         # export_npz()
   app/
     main_window.py      # окна/тулбар/доки, фоновые QThread-загрузки
@@ -97,6 +109,7 @@ src/hsi_toolkit/
     preview_panel.py    # режимы, слайдеры λ, растяжение
     annotation_panel.py # список объектов, имена, комментарии
     spectrum_panel.py   # графики спектров (3D/водопад/CI)
+    stats_panel.py      # вкладка «Статистика»: таблица «каналы × пары»
     export_dialog.py    # экспорт NPZ
     canvas/             # канвас предпросмотра, PolylineTool
 tests/                  # pytest: ядро + offscreen GUI smoke

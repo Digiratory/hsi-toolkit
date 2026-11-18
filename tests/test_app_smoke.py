@@ -9,6 +9,9 @@ import pytest
 
 pytest.importorskip("PySide6")
 
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QFileDialog
+
 from conftest import BANDS
 
 
@@ -458,3 +461,252 @@ def test_opening_dataset_during_build_defers_close(window, qapp, monkeypatch):
         assert win.workspace is ws2 and not win.workspace._closed
     finally:
         release.set()
+
+
+def _stats_polygons():
+    from hsi_toolkit.core.annotations import Annotation
+
+    dark = Annotation(
+        id="s1",
+        kind="polygon",
+        name="Тёмная",
+        points=[(0.0, 0.0), (8.0, 0.0), (8.0, 8.0), (0.0, 8.0)],
+        color="#d62728",
+    )
+    bright = Annotation(
+        id="s2",
+        kind="polygon",
+        name="Светлая",
+        points=[(16.0, 16.0), (24.0, 16.0), (24.0, 24.0), (16.0, 24.0)],
+        color="#2ca02c",
+    )
+    return dark, bright
+
+
+def test_stats_tab_workflow(window, qapp, monkeypatch):
+    win, ws, tmp_path = window
+    wait_for(lambda: win.preview_panel.has_image, qapp)
+
+    # Empty state: hint instead of the table, exports disabled.
+    assert win.stats_panel._result is None
+    assert not win.stats_panel.table.isVisibleTo(win.stats_panel)
+    assert win.stats_panel.status_label.text() == "Нужно ≥2 видимых полигона"
+    assert not win.stats_panel.csv_button.isEnabled()
+
+    dark, bright = _stats_polygons()
+    win.add_annotation(dark)
+    win.add_annotation(bright)
+    wait_for(lambda: not win.stats_panel.is_busy, qapp)
+
+    result = win.stats_panel._result
+    assert result is not None
+    assert result.pairs == ("Тёмная vs Светлая",)
+    assert win.stats_panel.table.isVisibleTo(win.stats_panel)
+    assert win.stats_panel.table.rowCount() == BANDS
+    assert win.stats_panel.table.columnCount() == 1
+    assert win.stats_panel.csv_button.isEnabled()
+
+    # The dark quadrant differs from the bright zone: significant + AUC 0.
+    assert (result.significant == True).all()  # noqa: E712
+    assert result.auc[0, 0] == pytest.approx(0.0, abs=1e-9)
+    highlighted = [
+        b
+        for b in range(BANDS)
+        if win.stats_panel.table.item(b, 0).background().style()
+        == Qt.BrushStyle.SolidPattern
+    ]
+    assert len(highlighted) == BANDS
+
+    # A rename must refresh labels via redraw, not a recomputation.
+    dark.name = "Тёмная зона"
+    result_before = win.stats_panel._result
+    workers_before = len(win.stats_panel._running_workers)
+    win._on_annotation_changed(dark.id)
+    qapp.processEvents()
+    assert win.stats_panel._result is result_before
+    assert len(win.stats_panel._running_workers) == workers_before
+    header = win.stats_panel.table.horizontalHeaderItem(0)
+    assert header.text() == "Тёмная зона vs Светлая"
+
+    # Metric switch is a pure redraw as well.
+    win.stats_panel.metric_combo.setCurrentIndex(2)  # ΔR, %
+    qapp.processEvents()
+    assert win.stats_panel._result is result_before
+    assert len(win.stats_panel._running_workers) == workers_before
+    assert win.stats_panel.table.item(0, 0).text() != "—"
+
+    # Settings changes must recompute.
+    win.stats_panel.test_combo.setCurrentIndex(1)  # Welch
+    wait_for(lambda: not win.stats_panel.is_busy, qapp)
+    assert win.stats_panel._result is not result_before
+    assert win.stats_panel._result.test == "welch"
+
+    win.stats_panel.correction_combo.setCurrentIndex(2)  # Без поправки
+    wait_for(lambda: not win.stats_panel.is_busy, qapp)
+    assert win.stats_panel._result.correction == "none"
+
+    win.stats_panel.alpha_combo.setCurrentIndex(1)  # α = 0.01
+    wait_for(lambda: not win.stats_panel.is_busy, qapp)
+    assert win.stats_panel._result.alpha == 0.01
+
+    # Reference switch must recompute with the new reference and show it.
+    win.stats_panel.ref_combo.setCurrentIndex(1)  # Светлая (default was 0)
+    wait_for(lambda: not win.stats_panel.is_busy, qapp)
+    assert win.stats_panel._result.ref_index == 1
+    assert "Эталон: «Светлая»" in win.stats_panel.status_label.text()
+
+    # CSV export from the panel writes a file with a BOM and a header.
+    out_path = tmp_path / "exported.stats.csv"
+    monkeypatch.setattr(
+        QFileDialog,
+        "getSaveFileName",
+        staticmethod(lambda *a, **k: (str(out_path), "CSV (*.csv)")),
+    )
+    win.stats_panel._export_csv()
+    wait_for(
+        lambda: not win.stats_panel.is_busy and not win.stats_panel._export_busy, qapp
+    )
+    assert out_path.exists()
+    raw = out_path.read_bytes()
+    assert raw.startswith(b"\xef\xbb\xbf")
+    assert raw.split(b"\r\n")[0].decode("utf-8-sig").startswith("channel,wavelength_nm")
+    assert win.stats_panel.status_label.text().startswith("Экспортировано:")
+
+
+def test_stats_reader_defers_close(window, qapp, monkeypatch):
+    # Regression guard: a running stats extraction is a memmap reader, so
+    # apply_workspace must defer the old workspace close until it finishes.
+    win, ws0, tmp_path = window
+    wait_for(lambda: win.preview_panel.has_image, qapp)
+
+    import threading
+
+    from hsi_toolkit.app import stats_panel as stats_module
+    from hsi_toolkit.core.dataset import HSIWorkspace
+
+    dark, bright = _stats_polygons()
+    win.add_annotation(dark)
+    win.add_annotation(bright)
+    wait_for(lambda: not win.stats_panel.is_busy, qapp)
+
+    original = stats_module.mask_band_values
+    release = threading.Event()
+    started = threading.Event()
+
+    def slow_extract(ws, mask):
+        started.set()
+        if not release.wait(10):
+            raise TimeoutError("slow extraction not released")
+        return original(ws, mask)
+
+    monkeypatch.setattr(stats_module, "mask_band_values", slow_extract)
+
+    # A geometry change forces a fresh extraction (setting-only changes are
+    # served from the extraction cache without touching the memmaps).
+    dark.points = [(0.0, 0.0), (9.0, 0.0), (9.0, 9.0), (0.0, 9.0)]
+    win._on_annotation_changed(dark.id)
+    wait_for(lambda: started.is_set(), qapp)
+
+    ws1 = HSIWorkspace.open(ws0.hdr_path)
+    win.apply_workspace(ws1)
+    qapp.processEvents()
+
+    assert win.workspace is ws1
+    assert win.stats_panel.is_busy
+    assert not ws0._closed and ws0 in win._pending_close
+
+    release.set()
+    wait_for(lambda: ws0._closed, qapp)
+    assert win.workspace is ws1 and not win.workspace._closed
+    assert not win.stats_panel.is_busy
+
+
+def test_stats_skipped_roi_and_fast_recompute(window, qapp):
+    win, ws, tmp_path = window
+    wait_for(lambda: win.preview_panel.has_image, qapp)
+
+    from hsi_toolkit.core.annotations import Annotation
+
+    dark, bright = _stats_polygons()
+    outside = Annotation(
+        id="s3",
+        kind="polygon",
+        name="Вне кадра",
+        points=[(100.0, 100.0), (110.0, 100.0), (110.0, 110.0), (100.0, 110.0)],
+        color="#9467bd",
+    )
+    win.add_annotation(dark)
+    win.add_annotation(bright)
+    win.add_annotation(outside)
+    wait_for(lambda: not win.stats_panel.is_busy, qapp)
+
+    result = win.stats_panel._result
+    assert result is not None
+    assert result.pairs == ("Тёмная vs Светлая",)
+    assert "Вне кадра" in win.stats_panel.status_label.text()
+
+    # Selecting the out-of-image ROI as reference: it is skipped, and the
+    # combo must resync to the reference actually used for ΔR%.
+    outside_index = win.stats_panel.ref_combo.findData("s3")
+    assert outside_index >= 0
+    win.stats_panel.ref_combo.setCurrentIndex(outside_index)
+    wait_for(lambda: not win.stats_panel.is_busy, qapp)
+    qapp.processEvents()
+    assert win.stats_panel.ref_combo.currentData() == "s1"
+    assert win.stats_panel._result.ref_index == 0
+    assert "эталон" in win.stats_panel.status_label.text()
+
+    # A rename must refresh labels via the cached redraw even though one ROI
+    # was skipped (labels resolve by id, not by position).
+    bright.name = "Светлая зона"
+    result_before = win.stats_panel._result
+    workers_before = len(win.stats_panel._running_workers)
+    win._on_annotation_changed(bright.id)
+    qapp.processEvents()
+    assert win.stats_panel._result is result_before
+    assert len(win.stats_panel._running_workers) == workers_before
+    assert (
+        win.stats_panel.table.horizontalHeaderItem(0).text()
+        == "Тёмная vs Светлая зона"
+    )
+
+    # Correction/alpha changes re-adjust the cached p-values synchronously:
+    # no worker starts, no memmap extraction happens.
+    workers_before = len(win.stats_panel._running_workers)
+    result_before = win.stats_panel._result
+    win.stats_panel.alpha_combo.setCurrentIndex(1)  # α = 0.01
+    qapp.processEvents()
+    assert win.stats_panel._result.alpha == 0.01
+    assert win.stats_panel._result is not result_before
+    assert len(win.stats_panel._running_workers) == workers_before
+
+    win.stats_panel.correction_combo.setCurrentIndex(2)  # без поправки
+    qapp.processEvents()
+    assert win.stats_panel._result.correction == "none"
+    np.testing.assert_array_equal(
+        win.stats_panel._result.p_adjusted, win.stats_panel._result.p_raw
+    )
+
+
+def test_stats_help_button(window, qapp):
+    win, ws, tmp_path = window
+    from PySide6.QtWidgets import QTextBrowser
+
+    button = win.stats_panel.help_button
+    assert not button.text()  # icon-only
+    assert not button.icon().isNull()
+
+    dialog = win.stats_panel._build_help_dialog()
+    assert dialog.windowTitle() == "О статистиках"
+    content = dialog.findChild(QTextBrowser).toPlainText()
+    for keyword in (
+        "ΔR,%",
+        "Cohen's d",
+        "AUC",
+        "Холм",
+        "Уэлча",
+        "эталон",
+        "автокорреляция",
+    ):
+        assert keyword in content, keyword
+    dialog.deleteLater()

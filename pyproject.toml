@@ -10,7 +10,9 @@ requires-python = ">=3.14"
 dependencies = [
     "matplotlib>=3.10",
     "numpy>=2.5.4",
+    "openpyxl>=3.1.5",
     "pyside6>=6.10",
+    "scipy>=1.18.1",
 ]
 
 [project.scripts]

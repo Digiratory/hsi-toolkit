@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QMessageBox,
     QProgressBar,
+    QTabWidget,
     QToolBar,
     QWidget,
 )
@@ -29,6 +30,7 @@ from hsi_toolkit.app.data_dialog import DataDialog
 from hsi_toolkit.app.export_dialog import ExportDialog
 from hsi_toolkit.app.preview_panel import PreviewPanel
 from hsi_toolkit.app.spectrum_panel import SpectrumPanel
+from hsi_toolkit.app.stats_panel import StatsPanel
 from hsi_toolkit.app.workers import FunctionWorker, WorkerPool
 from hsi_toolkit.core.annotations import (
     Annotation,
@@ -74,6 +76,9 @@ class MainWindow(QMainWindow):
         self.spectrum_panel.settings_changed.connect(self._update_spectra)
         self.spectrum_panel.workers_idle.connect(self._flush_pending_closes)
 
+        self.stats_panel = StatsPanel()
+        self.stats_panel.workers_idle.connect(self._flush_pending_closes)
+
         self.setCentralWidget(self.preview_panel)
         self._info_label = QLabel()
         self._info_label.setTextFormat(Qt.TextFormat.RichText)
@@ -84,7 +89,10 @@ class MainWindow(QMainWindow):
         objects_dock = self._dock("Объекты", self.annotation_panel)
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, objects_dock)
 
-        spectra_dock = self._dock("Спектры", self.spectrum_panel)
+        self.bottom_tabs = QTabWidget()
+        self.bottom_tabs.addTab(self.spectrum_panel, "Спектры")
+        self.bottom_tabs.addTab(self.stats_panel, "Статистика")
+        spectra_dock = self._dock("Спектры и статистика", self.bottom_tabs)
         self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, spectra_dock)
 
         self._build_toolbar()
@@ -197,6 +205,7 @@ class MainWindow(QMainWindow):
         # defer the close until the last reader (lowres build, spectrum sweep,
         # export) finishes. Stale results are dropped by the generation guards.
         self.spectrum_panel.shutdown(wait=False)
+        self.stats_panel.shutdown(wait=False)
         old_ws = self.workspace
         if old_ws is not None:
             if self._has_active_readers():
@@ -210,6 +219,7 @@ class MainWindow(QMainWindow):
         self.annotation_panel.set_annotations(self.annotations)
         self.spectrum_panel.set_workspace(ws)
         self.spectrum_panel.set_annotation_source(self.annotations)
+        self.stats_panel.set_workspace(ws)
         self.preview_panel.canvas.set_annotations(self.annotations)
         self.preview_panel.set_workspace(ws)
         self._act_save.setEnabled(True)
@@ -231,7 +241,11 @@ class MainWindow(QMainWindow):
         self._lowres_worker.start()
 
     def _has_active_readers(self) -> bool:
-        return self.worker_pool.is_busy or self.spectrum_panel.is_busy
+        return (
+            self.worker_pool.is_busy
+            or self.spectrum_panel.is_busy
+            or self.stats_panel.is_busy
+        )
 
     def _flush_pending_closes(self) -> None:
         """Close deferred workspaces once no background reader is running."""
@@ -326,6 +340,7 @@ class MainWindow(QMainWindow):
         """Plot every visible (checked) annotation; cache skips unchanged ones."""
         annotations = [a for a in self.annotations if a.visible]
         self.spectrum_panel.update_spectra(annotations)
+        self.stats_panel.update_rois(annotations)
 
     def _on_annotation_changed(self, _annotation_id: str) -> None:
         self.preview_panel.canvas.set_annotations(self.annotations)
@@ -420,6 +435,7 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event) -> None:
         self.spectrum_panel.shutdown()
+        self.stats_panel.shutdown()
         self.worker_pool.wait_all(10000)
         self._flush_pending_closes()
         if self.workspace is not None:
