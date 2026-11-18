@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import time
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -777,3 +778,61 @@ def test_annotation_label_controls(window, qapp):
     qapp.processEvents()
     assert label_artists()
     assert label_artists()[0].get_fontsize() == 6.0
+
+
+def test_data_dialog_remembers_last_dir(qapp, tmp_path, monkeypatch):
+    # Isolate QSettings in a temp ini file so the test never touches the
+    # user's real persisted settings (native registry store).
+    from PySide6.QtCore import QSettings
+    from PySide6.QtWidgets import QFileDialog
+
+    from hsi_toolkit.app import data_dialog
+    from hsi_toolkit.app import settings as settings_module
+
+    ini = tmp_path / "settings.ini"
+    monkeypatch.setattr(
+        settings_module,
+        "QSettings",
+        lambda *a, **k: QSettings(str(ini), QSettings.Format.IniFormat),
+    )
+
+    picked = tmp_path / "data" / "cube.hdr"
+    picked.parent.mkdir()
+    picked.write_text("ENVI\n", encoding="ascii")
+    monkeypatch.setattr(
+        QFileDialog,
+        "getOpenFileName",
+        staticmethod(lambda *a, **k: (str(picked), "ENVI header (*.hdr)")),
+    )
+
+    dialog = data_dialog.DataDialog()
+    dialog._browse_cube()
+    qapp.processEvents()
+    assert dialog.cube_edit.text() == str(picked)
+    assert settings_module.last_data_dir() == picked.parent
+
+    # A cancelled file dialog must not change the stored folder.
+    monkeypatch.setattr(
+        QFileDialog, "getOpenFileName", staticmethod(lambda *a, **k: ("", ""))
+    )
+    other = tmp_path / "other"
+    other.mkdir()
+    settings_module.set_last_data_dir(other)
+    dialog._browse_cube()
+    assert settings_module.last_data_dir() == other
+    dialog.deleteLater()
+
+    # A fresh dialog starts browsing in the remembered folder.
+    starts = []
+
+    def capture_start(*args, **kwargs):
+        starts.append(args[2])
+        return ("", "")
+
+    dialog2 = data_dialog.DataDialog()
+    monkeypatch.setattr(
+        QFileDialog, "getOpenFileName", staticmethod(capture_start)
+    )
+    dialog2._browse(dialog2.white_edit)
+    assert starts and Path(starts[0]) == other
+    dialog2.deleteLater()

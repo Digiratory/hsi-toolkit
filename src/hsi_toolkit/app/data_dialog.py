@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from hsi_toolkit.app.settings import last_data_dir, set_last_data_dir
 from hsi_toolkit.core.annotations import annotations_path_for
 from hsi_toolkit.core.dataset import find_reference_hdrs
 
@@ -83,14 +84,32 @@ class DataDialog(QDialog):
         layout.addWidget(button)
         return row
 
+    def _start_dir(self, edit: QLineEdit) -> str:
+        """Field's own path, else the last selected dataset folder, else home."""
+        text = edit.text().strip()
+        if text:
+            return text
+        saved = last_data_dir()
+        if saved is not None and saved.is_dir():
+            return str(saved)
+        return str(Path.home())
+
     def _browse(self, edit: QLineEdit, file_filter: str = HDR_FILTER) -> None:
-        start = edit.text() or str(Path.home())
-        path, _ = QFileDialog.getOpenFileName(self, "Выберите файл", start, file_filter)
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Выберите файл", self._start_dir(edit), file_filter
+        )
         if path:
             edit.setText(path)
 
     def _browse_cube(self) -> None:
-        self._browse(self.cube_edit)
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Выберите файл", self._start_dir(self.cube_edit), HDR_FILTER
+        )
+        if path:
+            self.cube_edit.setText(path)
+            # Remember the folder only when an image was actually selected;
+            # a cancelled dialog must not touch the stored value.
+            set_last_data_dir(Path(path).parent)
         self._autodetect()
 
     def _autodetect(self) -> None:
