@@ -710,3 +710,70 @@ def test_stats_help_button(window, qapp):
     ):
         assert keyword in content, keyword
     dialog.deleteLater()
+
+
+def test_spectrum_toolbar(window, qapp):
+    win, ws, tmp_path = window
+    from matplotlib.backends.backend_qtagg import NavigationToolbar2QT
+
+    toolbar = win.spectrum_panel.toolbar
+    assert isinstance(toolbar, NavigationToolbar2QT)
+    # The subplot editor is hidden: it fights the clf()+tight_layout redraws.
+    customize = toolbar._actions.get("edit_parameters")
+    assert customize is not None
+    assert not customize.isVisible()
+
+    # Pan toggles the canvas tool state and back, like in the preview panel.
+    pan = toolbar._actions["pan"]
+    pan.trigger()
+    qapp.processEvents()
+    assert toolbar.mode.name == "PAN"
+    pan.trigger()
+    qapp.processEvents()
+    assert toolbar.mode.name == "NONE"
+
+
+def test_annotation_label_controls(window, qapp):
+    win, ws, tmp_path = window
+    wait_for(lambda: win.preview_panel.has_image, qapp)
+
+    from hsi_toolkit.core.annotations import Annotation
+
+    polygon = Annotation(
+        id="lbl1",
+        kind="polygon",
+        name="Зона",
+        points=[(5.0, 5.0), (15.0, 5.0), (15.0, 15.0), (5.0, 15.0)],
+        color="#2ca02c",
+    )
+    win.add_annotation(polygon)
+    qapp.processEvents()
+    canvas = win.preview_panel.canvas
+
+    def label_artists():
+        return [t for t in canvas.ax.texts if t.get_text() == "Зона"]
+
+    assert len(label_artists()) == 1
+    assert label_artists()[0].get_fontsize() == 8.0  # default
+
+    # Font size control applies to the rendered label.
+    win.preview_panel.label_size_spin.setValue(14)
+    qapp.processEvents()
+    assert len(label_artists()) == 1
+    assert label_artists()[0].get_fontsize() == 14.0
+
+    # The checkbox hides the label text entirely.
+    win.preview_panel.labels_check.setChecked(False)
+    qapp.processEvents()
+    assert not label_artists()
+
+    # Back on with a new size, and settings survive selection redraws.
+    win.preview_panel.labels_check.setChecked(True)
+    win.preview_panel.label_size_spin.setValue(6)
+    qapp.processEvents()
+    assert label_artists()
+    assert label_artists()[0].get_fontsize() == 6.0
+    canvas.set_selected("lbl1")
+    qapp.processEvents()
+    assert label_artists()
+    assert label_artists()[0].get_fontsize() == 6.0

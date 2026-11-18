@@ -13,11 +13,13 @@ from matplotlib.figure import Figure
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWidgets import (
+    QCheckBox,
     QComboBox,
     QFormLayout,
     QHBoxLayout,
     QLabel,
     QSlider,
+    QSpinBox,
     QVBoxLayout,
     QWidget,
 )
@@ -67,6 +69,13 @@ class PreviewPanel(QWidget):
         self.stretch_combo.addItems([STRETCH_PERCENTILE, STRETCH_MINMAX])
         self.cmap_combo = QComboBox()
         self.cmap_combo.addItems(CMAPS)
+        # Annotation label controls (visibility + font size).
+        self.labels_check = QCheckBox("Показывать")
+        self.labels_check.setChecked(True)
+        self.label_size_spin = QSpinBox()
+        self.label_size_spin.setRange(4, 24)
+        self.label_size_spin.setValue(8)
+        self.label_size_spin.setToolTip("Размер шрифта подписей зон на предпросмотре")
 
         # Integral-spectrum strip with the window overlay (window mode only).
         self.spectrum_figure = Figure(figsize=(1, 1))
@@ -77,6 +86,7 @@ class PreviewPanel(QWidget):
         controls.addRow("Режим:", self.mode_combo)
         controls.addRow("Растяжение:", self.stretch_combo)
         controls.addRow("Цветовая карта:", self.cmap_combo)
+        controls.addRow("Подписи зон:", self._labels_row())
 
         side = QWidget()
         side.setLayout(controls)
@@ -112,6 +122,8 @@ class PreviewPanel(QWidget):
         self.width_slider.valueChanged.connect(self._on_slider_changed)
         self.stretch_combo.currentTextChanged.connect(self._on_options_changed)
         self.cmap_combo.currentTextChanged.connect(self._on_options_changed)
+        self.labels_check.toggled.connect(self._on_labels_changed)
+        self.label_size_spin.valueChanged.connect(self._on_labels_changed)
         # Pan/zoom of the preview changes the strip's spatial region.
         self.canvas.ax.callbacks.connect(
             "xlim_changed", self._on_view_limits_changed
@@ -130,6 +142,21 @@ class PreviewPanel(QWidget):
         layout.addWidget(slider, stretch=1)
         layout.addWidget(label)
         return row
+
+    def _labels_row(self) -> QWidget:
+        row = QWidget()
+        layout = QHBoxLayout(row)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(self.labels_check)
+        layout.addWidget(QLabel("размер:"))
+        layout.addWidget(self.label_size_spin)
+        layout.addStretch(1)
+        return row
+
+    def _on_labels_changed(self) -> None:
+        self.canvas.set_label_settings(
+            self.labels_check.isChecked(), self.label_size_spin.value()
+        )
 
     # -- workspace --------------------------------------------------------
 
@@ -172,6 +199,8 @@ class PreviewPanel(QWidget):
             self.width_slider,
             self.stretch_combo,
             self.cmap_combo,
+            self.labels_check,
+            self.label_size_spin,
         ):
             widget.setEnabled(enabled)
 

@@ -70,6 +70,9 @@ class PreviewCanvas(QWidget):
         self._annotations = AnnotationSet()
         self._overlay_artists: dict = {}
         self._selected_id = ""
+        # Annotation label controls (see set_label_settings).
+        self._label_visible = True
+        self._label_fontsize = 8.0
         self._mode = MODE_SELECT
         self._polyline_tool = PolylineTool(self, min_points=2, closed=False)
         self._polygon_tool = PolylineTool(self, min_points=3, closed=True)
@@ -137,6 +140,16 @@ class PreviewCanvas(QWidget):
         self._selected_id = annotation_id
         self._redraw_overlays()
 
+    def set_label_settings(self, visible: bool, size: int) -> None:
+        """Annotation label visibility and font size (preview controls)."""
+        visible = bool(visible)
+        size = float(max(int(size), 1))
+        if visible == self._label_visible and size == self._label_fontsize:
+            return
+        self._label_visible = visible
+        self._label_fontsize = size
+        self._redraw_overlays()
+
     def _redraw_overlays(self) -> None:
         from matplotlib.colors import to_rgba
         from matplotlib.lines import Line2D
@@ -171,13 +184,15 @@ class PreviewCanvas(QWidget):
                 )
                 self.ax.add_line(line)
                 artists.append(line)
-            label = self.ax.text(
-                pts[0, 0], pts[0, 1], ann.name, color=color,
-                fontsize=8, fontweight="bold" if selected else "normal",
-                bbox=dict(facecolor="white", alpha=0.6, edgecolor="none", pad=1.0),
-                zorder=4,
-            )
-            artists.append(label)
+            if self._label_visible:
+                label = self.ax.text(
+                    pts[0, 0], pts[0, 1], ann.name, color=color,
+                    fontsize=self._label_fontsize,
+                    fontweight="bold" if selected else "normal",
+                    bbox=dict(facecolor="white", alpha=0.6, edgecolor="none", pad=1.0),
+                    zorder=4,
+                )
+                artists.append(label)
             self._overlay_artists[ann.id] = artists
         self._canvas.draw_idle()
 

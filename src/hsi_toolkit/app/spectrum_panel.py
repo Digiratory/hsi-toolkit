@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import List, Optional, Tuple
 
 import numpy as np
-from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
+from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg, NavigationToolbar2QT
 from matplotlib.figure import Figure
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QComboBox, QHBoxLayout, QLabel, QVBoxLayout, QWidget
@@ -80,10 +80,17 @@ class SpectrumPanel(QWidget):
 
         self.figure = Figure()
         self.canvas = FigureCanvasQTAgg(self.figure)
+        # Navigation controls (pan/zoom/home/save) like the preview panel.
+        self.toolbar = NavigationToolbar2QT(self.canvas, self)
+        # The subplot editor fights the clf()+tight_layout redraws.
+        customize = self.toolbar._actions.get("edit_parameters")
+        if customize is not None:
+            customize.setVisible(False)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(4, 2, 4, 2)
         layout.addLayout(bar)
+        layout.addWidget(self.toolbar)
         layout.addWidget(self.canvas, stretch=1)
 
         self.kind_combo.currentIndexChanged.connect(self._redraw)
