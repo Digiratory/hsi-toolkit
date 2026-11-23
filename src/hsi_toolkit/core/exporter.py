@@ -78,12 +78,18 @@ def export_npz(
     selected: Optional[Sequence[str]] = None,
     ribbon_width: int = DEFAULT_RIBBON_WIDTH,
 ) -> List[str]:
-    """Export annotation regions to ``.npz``; returns the exported object keys."""
+    """Export annotation regions to ``.npz``; returns the exported object keys.
+
+    Without ``selected`` every *visible* annotation is exported. An explicit
+    ``selected`` id list (e.g. the export dialog's checkboxes) wins over
+    visibility: hidden-but-checked objects are exported too.
+    """
     anns = list(annotations)
     if selected is not None:
         wanted = set(selected)
         anns = [a for a in anns if a.id in wanted]
-    anns = [a for a in anns if a.visible]
+    else:
+        anns = [a for a in anns if a.visible]
     if not anns:
         raise ValueError("No annotations selected for export")
     if corrected and not ws.has_references:

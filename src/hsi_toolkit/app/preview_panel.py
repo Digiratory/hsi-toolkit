@@ -227,7 +227,7 @@ class PreviewPanel(QWidget):
         region = self._view_region(ws)
         if self._integral is None or self._last_region != region:
             source = ws.lowres
-            if source is None:
+            if source is None or source.shape[1] == 0 or source.shape[2] == 0:
                 return np.asarray(ws.wavelengths) * np.nan  # placeholder shape
             fx = ws.samples / source.shape[2]
             fy = ws.lines / source.shape[1]

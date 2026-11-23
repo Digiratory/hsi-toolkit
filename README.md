@@ -88,7 +88,8 @@ uv run pyinstaller --noconfirm hsi-toolkit.spec
 
 - `mpl_toolkits.mplot3d` (3D-графики спектров полилиний) подключается
   динамически, поэтому перечислен в `hiddenimports` spec-файла.
-- Для проверки сборки без дисплея: `QT_QPA_PLATFORM=offscreen dist\hsi-toolkit.exe`.
+- Для проверки сборки без дисплея:
+  `$env:QT_QPA_PLATFORM = "offscreen"; .\dist\hsi-toolkit.exe`.
 
 ## Разработка
 

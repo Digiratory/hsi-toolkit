@@ -75,6 +75,7 @@ class MainWindow(QMainWindow):
         self.spectrum_panel = SpectrumPanel()
         self.spectrum_panel.settings_changed.connect(self._update_spectra)
         self.spectrum_panel.workers_idle.connect(self._flush_pending_closes)
+        self.spectrum_panel.compute_skipped.connect(self._on_compute_skipped)
 
         self.stats_panel = StatsPanel()
         self.stats_panel.workers_idle.connect(self._flush_pending_closes)
@@ -190,7 +191,9 @@ class MainWindow(QMainWindow):
         self._status_progress.setVisible(False)
         self.apply_workspace(ws)
         if annotations_path is not None and Path(annotations_path).is_file():
-            self._apply_annotation_set(AnnotationSet.load(annotations_path), warn_on_error=True)
+            annotation_set = self._load_annotations_file(annotations_path)
+            if annotation_set is not None:
+                self._apply_annotation_set(annotation_set, warn_on_error=True)
         self.statusBar().showMessage("Набор загружен")
 
     def apply_workspace(self, ws: HSIWorkspace) -> None:
@@ -332,6 +335,10 @@ class MainWindow(QMainWindow):
         self.spectrum_panel.update_spectra(annotations)
         self.stats_panel.update_rois(annotations)
 
+    def _on_compute_skipped(self, skipped) -> None:
+        detail = "; ".join(f"{name} — {reason}" for name, reason in skipped)
+        self.statusBar().showMessage(f"Пропущены объекты: {detail}", 8000)
+
     def _on_annotation_changed(self, _annotation_id: str) -> None:
         self.preview_panel.canvas.set_annotations(self.annotations)
         self.annotation_panel.refresh()
@@ -349,6 +356,10 @@ class MainWindow(QMainWindow):
         self._update_spectra()
 
     def _set_tool(self, mode: str) -> None:
+        # Keep the exclusive action group in sync when the mode changes from
+        # code (e.g. after a finished draw). setChecked does not emit
+        # `triggered`, so this cannot recurse through the toolbar connects.
+        self._tool_actions[mode].setChecked(True)
         self.preview_panel.set_mode(mode)
 
     def _on_tool_cancelled(self) -> None:
@@ -373,6 +384,24 @@ class MainWindow(QMainWindow):
         self.annotations.save(path)
         self.statusBar().showMessage(f"Разметка сохранена: {path}")
 
+    def _load_annotations_file(self, path) -> Optional[AnnotationSet]:
+        """Load an annotations JSON; any failure warns instead of raising.
+
+        A bad auto-loaded sidecar must not abort the dataset load either.
+        """
+        try:
+            return AnnotationSet.load(path)
+        except Exception as exc:  # noqa: BLE001 - surfaced as a warning dialog
+            # OSError, JSON/Unicode decode errors, and structurally invalid
+            # payloads (KeyError/TypeError/AttributeError) all degrade to a
+            # warning: loading user files must never crash the app.
+            QMessageBox.warning(
+                self,
+                "Ошибка загрузки разметки",
+                f"Не удалось загрузить разметку:\n{path}\n\n{type(exc).__name__}: {exc}",
+            )
+            return None
+
     def load_annotations(self) -> None:
         if self.workspace is None:
             QMessageBox.information(self, "Нет данных", "Сначала откройте набор данных.")
@@ -385,7 +414,9 @@ class MainWindow(QMainWindow):
         )
         if not path:
             return
-        self._apply_annotation_set(AnnotationSet.load(path))
+        annotation_set = self._load_annotations_file(path)
+        if annotation_set is not None:
+            self._apply_annotation_set(annotation_set)
 
     def _apply_annotation_set(
         self, annotation_set: AnnotationSet, warn_on_error: bool = False
@@ -431,5 +462,12 @@ class MainWindow(QMainWindow):
         self.worker_pool.wait_all(10000)
         self._flush_pending_closes()
         if self.workspace is not None:
-            self.workspace.close()
+            if self._has_active_readers():
+                # A reader outlived the wait (shutdown keeps timed-out workers
+                # registered so this check is truthful): never close memmaps
+                # under a live reader. Defer to the existing machinery; at a
+                # real app exit the process end reclaims the read-only maps.
+                self._pending_close.append(self.workspace)
+            else:
+                self.workspace.close()
         super().closeEvent(event)

@@ -97,6 +97,8 @@ class PolylineTool(QObject):
     def _on_motion(self, event) -> None:
         if not self._active or event.inaxes is not self._owner.ax:
             return
+        if self._drag_idx >= len(self._points):
+            self._drag_idx = -1  # stale index (e.g. Backspace removed the vertex)
         if self._drag_idx >= 0 and event.xdata is not None and event.ydata is not None:
             self._points[self._drag_idx] = (float(event.xdata), float(event.ydata))
             self._update_line_artist()
@@ -119,6 +121,8 @@ class PolylineTool(QObject):
             self.stop()
         elif event.key in ("backspace", "delete") and self._points:
             self._points.pop()
+            if self._drag_idx >= len(self._points):
+                self._drag_idx = -1  # the removed vertex was being dragged
             self._update_line_artist()
             self._owner._canvas.draw_idle()
 

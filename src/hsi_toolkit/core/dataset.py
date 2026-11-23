@@ -61,10 +61,10 @@ class HSIWorkspace:
         self.white_prof: Optional[np.ndarray] = None
         if white is not None and dark is not None:
             self.dark_prof = _reference_profile(
-                dark, self.wavelengths, self.bands, self.samples, "dark"
+                dark, self.wavelengths, self.bands, self.samples, "dark", self.order
             )
             self.white_prof = _reference_profile(
-                white, self.wavelengths, self.bands, self.samples, "white"
+                white, self.wavelengths, self.bands, self.samples, "white", self.order
             )
 
     @classmethod
@@ -143,7 +143,9 @@ class HSIWorkspace:
 
     def build_lowres_cube(self, factor: int = 4) -> np.ndarray:
         """Downsampled float32 cube for interactive previews (B, H/f, W/f)."""
-        factor = max(1, int(factor))
+        # Tiny images (lines or samples < factor) would produce (B, 0, 0)
+        # and crash the preview; clamp so the output is at least (B, 1, 1).
+        factor = max(1, min(int(factor), self.lines, self.samples))
         h = (self.lines // factor) * factor
         w = (self.samples // factor) * factor
         out = np.empty((self.bands, h // factor, w // factor), dtype=np.float32)
@@ -172,8 +174,16 @@ def _reference_profile(
     bands: int,
     samples: int,
     name: str,
+    cube_order: np.ndarray,
 ) -> np.ndarray:
-    """Per-band, per-column mean over lines of a reference cube: (bands, samples)."""
+    """Per-band, per-column mean over lines of a reference cube: (bands, samples).
+
+    The returned profile is indexed in the cube's λ-sorted band order (row ``i``
+    corresponds to ``cube_wl[i]``). Without reference wavelengths the reference
+    is assumed to share the cube's *native* band order (same capture), so it is
+    re-indexed through ``cube_order`` (sorted position ``i`` → native band
+    ``cube_order[i]``).
+    """
     if ds.bands != bands:
         raise ValueError(f"{name} reference has {ds.bands} bands, the cube has {bands}")
     if ds.samples != samples:
@@ -184,7 +194,7 @@ def _reference_profile(
         if not np.allclose(ds_wl[order], cube_wl, atol=1.0):
             raise ValueError(f"{name} reference wavelengths differ from the cube wavelengths")
     else:
-        order = np.arange(ds.bands)
+        order = np.asarray(cube_order)
     profile = np.empty((bands, samples), dtype=np.float64)
     for i, band_idx in enumerate(order):
         band = np.asarray(ds.get_band(int(band_idx)), dtype=np.float64)

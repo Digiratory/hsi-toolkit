@@ -161,6 +161,19 @@ class TestExportSelection:
             export_npz(ws, [ann], tmp_path / "inv.npz")
         ws.close()
 
+    def test_invisible_but_selected_exports(self, synthetic_dataset, tmp_path):
+        # An explicit selection (dialog checkboxes) wins over visibility:
+        # hidden objects start unchecked but are user-checkable.
+        ws = _ws(synthetic_dataset)
+        hidden = _polygon("Скрытая")
+        hidden.visible = False
+        path = tmp_path / "hidden_sel.npz"
+        keys = export_npz(ws, [hidden, _polyline()], path, selected=["p1"])
+        assert keys == ["01_skrytaya"]
+        data = np.load(path)
+        assert "01_skrytaya" in data and "01_liniya" not in data
+        ws.close()
+
     def test_no_annotations_raises(self, synthetic_dataset, tmp_path):
         ws = _ws(synthetic_dataset)
         with pytest.raises(ValueError):

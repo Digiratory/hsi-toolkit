@@ -837,3 +837,256 @@ def test_data_dialog_remembers_last_dir(qapp, tmp_path, monkeypatch):
     dialog2._browse(dialog2.white_edit)
     assert starts and Path(starts[0]) == other
     dialog2.deleteLater()
+
+
+def test_backspace_mid_drag_drops_drag(window, qapp):
+    # Regression: Backspace during a vertex drag removed the point but left
+    # _drag_idx pointing past the list; the next motion raised IndexError.
+    win, ws, tmp_path = window
+    wait_for(lambda: win.preview_panel.has_image, qapp)
+
+    from types import SimpleNamespace
+
+    canvas = win.preview_panel.canvas
+    win._set_tool("polyline")
+    tool = canvas._polyline_tool
+    assert tool.active
+
+    def ev(**kw):
+        base = {
+            "inaxes": canvas.ax,
+            "button": 1,
+            "dblclick": False,
+            "xdata": None,
+            "ydata": None,
+        }
+        base.update(kw)
+        return SimpleNamespace(**base)
+
+    tool._on_press(ev(xdata=5.0, ydata=5.0))
+    tool._on_press(ev(xdata=15.0, ydata=15.0))
+    assert len(tool._points) == 2
+    tool._on_release(ev())
+    # Pressing on the last vertex starts a drag of it.
+    tool._on_press(ev(xdata=15.2, ydata=14.8))
+    assert tool._drag_idx == 1
+
+    # Backspace removes the dragged vertex and drops the drag.
+    tool._on_key(SimpleNamespace(key="backspace"))
+    assert len(tool._points) == 1
+    assert tool._drag_idx == -1
+
+    # The stale drag index must not raise IndexError on the next motion.
+    tool._on_motion(ev(xdata=14.0, ydata=14.0))
+    assert len(tool._points) == 1
+
+    win._on_tool_cancelled()
+
+
+def test_comment_debounce_survives_refresh(qapp):
+    # Regression: a same-annotation refresh inside the 300 ms debounce window
+    # overwrote the editor with the stored comment, discarding in-progress text.
+    from hsi_toolkit.app.annotation_panel import AnnotationPanel
+    from hsi_toolkit.core.annotations import Annotation, AnnotationSet
+
+    def make(id_, name, comment=""):
+        return Annotation(
+            id=id_,
+            kind="polygon",
+            name=name,
+            points=[(0.0, 0.0), (5.0, 0.0), (5.0, 5.0), (0.0, 5.0)],
+            comment=comment,
+            color="#d62728",
+        )
+
+    annotations = AnnotationSet()
+    ann1 = make("a1", "Первая", "старый")
+    ann2 = make("a2", "Вторая", "")
+    annotations.add(ann1)
+    annotations.add(ann2)
+    panel = AnnotationPanel()
+    panel.set_annotations(annotations)
+    panel.set_selection(["a1"])
+    qapp.processEvents()
+    assert panel.comment_edit.toPlainText() == "старый"
+
+    # The user starts typing: the debounce timer is running.
+    panel.comment_edit.setPlainText("новый комментарий")
+    assert panel._comment_timer.isActive()
+
+    # A same-annotation refresh lands inside the debounce window (visibility
+    # toggle, rename, external annotation_changed): the typed text survives.
+    panel.refresh()
+    assert panel.comment_edit.toPlainText() == "новый комментарий"
+
+    # Moving the fields off the annotation still flushes the pending edit.
+    panel.set_selection(["a2"])
+    assert ann1.comment == "новый комментарий"
+
+    # The debounce path applies the text via _apply_comment as well.
+    panel.comment_edit.setPlainText("второй")
+    panel._apply_comment()
+    assert ann2.comment == "второй"
+
+
+def test_spectrum_skips_degenerate_annotation(window, qapp):
+    # Regression: one degenerate annotation (zero-pixel mask) failed the whole
+    # compute worker and show_message wiped the figure; the batch must continue
+    # and report the skipped object without touching the figure (has_content
+    # stays true, so no warning text may be drawn into it).
+    win, ws, tmp_path = window
+    wait_for(lambda: win.preview_panel.has_image, qapp)
+
+    from hsi_toolkit.core.annotations import Annotation
+
+    outside = Annotation(
+        id="bad1",
+        kind="polygon",
+        name="Вне кадра",
+        points=[(100.0, 100.0), (110.0, 100.0), (110.0, 110.0), (100.0, 110.0)],
+        color="#9467bd",
+    )
+    good = Annotation(
+        id="ok1",
+        kind="polygon",
+        name="Зона",
+        points=[(5.0, 5.0), (15.0, 5.0), (15.0, 15.0), (5.0, 15.0)],
+        color="#2ca02c",
+    )
+
+    skipped_events = []
+    win.spectrum_panel.compute_skipped.connect(lambda s: skipped_events.append(list(s)))
+    win.add_annotation(outside)
+    win.add_annotation(good)
+    wait_for(lambda: not win.spectrum_panel.is_busy, qapp)
+
+    assert win.spectrum_panel.has_content
+    assert [r[0] for r in win.spectrum_panel._result_polygons] == ["ok1"]
+    assert skipped_events
+    last_names = [name for name, _reason in skipped_events[-1]]
+    assert "Вне кадра" in last_names
+    assert "Пропущены объекты" in win.statusBar().currentMessage()
+    assert "Вне кадра" in win.statusBar().currentMessage()
+
+
+def test_toolbar_syncs_after_creation(window, qapp, monkeypatch):
+    # Regression: the creation flow reset the canvas to select mode but left
+    # Полигон checked in the exclusive tool group.
+    win, ws, tmp_path = window
+    from PySide6.QtWidgets import QInputDialog
+
+    monkeypatch.setattr(QInputDialog, "getText", staticmethod(lambda *a, **k: ("Полигон 1", True)))
+    win._set_tool("polygon")
+    assert win._tool_actions["polygon"].isChecked()
+
+    win._on_annotation_created("polygon", [(2.0, 2.0), (10.0, 2.0), (10.0, 8.0)])
+    qapp.processEvents()
+
+    assert win.preview_panel.canvas.mode == "select"
+    assert win._tool_actions["select"].isChecked()
+    assert not win._tool_actions["polygon"].isChecked()
+
+
+def test_load_annotations_corrupt_json_keeps_current(window, qapp, monkeypatch):
+    # Regression: AnnotationSet.load on a corrupt file raised out of
+    # load_annotations; it must warn and keep the current annotations instead.
+    win, ws, tmp_path = window
+    wait_for(lambda: win.preview_panel.has_image, qapp)
+
+    from PySide6.QtWidgets import QFileDialog, QMessageBox
+
+    from hsi_toolkit.core.annotations import Annotation
+
+    polygon = Annotation(
+        id="k1",
+        kind="polygon",
+        name="Зона",
+        points=[(5.0, 5.0), (15.0, 5.0), (15.0, 15.0), (5.0, 15.0)],
+        color="#2ca02c",
+    )
+    win.add_annotation(polygon)
+
+    bad = tmp_path / "broken.json"
+    bad.write_text("{ not json at all", encoding="utf-8")
+    monkeypatch.setattr(
+        QFileDialog,
+        "getOpenFileName",
+        staticmethod(lambda *a, **k: (str(bad), "JSON (*.json)")),
+    )
+    warned = []
+    monkeypatch.setattr(QMessageBox, "warning", staticmethod(lambda *a, **k: warned.append(a)))
+
+    win.load_annotations()
+    qapp.processEvents()
+
+    assert warned, "a corrupt file must warn instead of raising"
+    assert [a.id for a in win.annotations] == ["k1"]
+
+    # Structurally invalid (but parseable) JSON must degrade the same way:
+    # an object without "points" raises KeyError inside AnnotationSet.load.
+    bad_structure = tmp_path / "structure.json"
+    bad_structure.write_text(
+        '{"schema": "hsi-toolkit.annotations/1",'
+        ' "objects": [{"id": "x", "kind": "polygon", "name": "X"}]}',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        QFileDialog,
+        "getOpenFileName",
+        staticmethod(lambda *a, **k: (str(bad_structure), "JSON (*.json)")),
+    )
+    warned.clear()
+    win.load_annotations()
+    qapp.processEvents()
+
+    assert warned, "a structurally invalid file must warn instead of raising"
+    assert [a.id for a in win.annotations] == ["k1"]
+
+
+def test_close_event_defers_workspace_close(window, qapp, monkeypatch):
+    # Regression: closeEvent used to close the workspace memmaps even when a
+    # reader outlived the shutdown wait (Windows access-violation risk). The
+    # workspace must go through the deferred-close machinery instead.
+    win, ws0, tmp_path = window
+    wait_for(lambda: win.preview_panel.has_image, qapp)
+
+    import threading
+
+    from hsi_toolkit.app import stats_panel as stats_module
+    from hsi_toolkit.app.workers import FunctionWorker
+
+    dark, bright = _stats_polygons()
+    win.add_annotation(dark)
+    win.add_annotation(bright)
+    wait_for(lambda: not win.stats_panel.is_busy, qapp)
+
+    original = stats_module.mask_band_values
+    release = threading.Event()
+    started = threading.Event()
+
+    def slow_extract(ws, mask):
+        started.set()
+        if not release.wait(10):
+            raise TimeoutError("slow extraction not released")
+        return original(ws, mask)
+
+    monkeypatch.setattr(stats_module, "mask_band_values", slow_extract)
+    # Simulate the closeEvent wait timing out instead of blocking for 30 s:
+    # the timed-out worker must stay registered and keep the workspace open.
+    monkeypatch.setattr(FunctionWorker, "wait", lambda self, ms=None: None)
+
+    dark.points = [(0.0, 0.0), (9.0, 0.0), (9.0, 9.0), (0.0, 9.0)]
+    win._on_annotation_changed(dark.id)
+    wait_for(lambda: started.is_set(), qapp)
+
+    win.close()
+    qapp.processEvents()
+
+    assert win.stats_panel.is_busy  # timed-out worker stays registered
+    assert not ws0._closed
+    assert ws0 in win._pending_close
+
+    release.set()
+    wait_for(lambda: ws0._closed, qapp)  # closed via the pending flush
+    assert ws0 not in win._pending_close
+    assert not win.stats_panel.is_busy

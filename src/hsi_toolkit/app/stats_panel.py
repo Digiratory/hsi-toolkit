@@ -32,7 +32,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from hsi_toolkit.app.workers import FunctionWorker
+from hsi_toolkit.app.workers import FunctionWorker, shutdown_workers
 from hsi_toolkit.core.annotations import Annotation, rasterize
 from hsi_toolkit.core.spectra import mask_band_values
 from hsi_toolkit.core.stats import (
@@ -233,10 +233,7 @@ class StatsPanel(QWidget):
             self._cancel_current["cancelled"] = True
         if not wait:
             return
-        for worker in list(self._running_workers):
-            if worker.isRunning():
-                worker.wait(30000)
-        self._running_workers.clear()
+        shutdown_workers(self._running_workers)
         self._export_busy = False
 
     # -- settings helpers -------------------------------------------------------

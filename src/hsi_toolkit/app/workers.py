@@ -67,3 +67,16 @@ class WorkerPool(QObject):
         for worker in list(self._workers):
             if worker.isRunning():
                 worker.wait(timeout_ms)
+
+
+def shutdown_workers(running_workers: List[FunctionWorker], timeout_ms: int = 30000) -> None:
+    """Join a panel's workers, then drop only the ones that finished.
+
+    Timed-out workers stay in ``running_workers`` so the owner's ``is_busy``
+    stays truthful (their ``finished`` signal removes them later); callers
+    that must not close memmaps under a live reader rely on this.
+    """
+    for worker in list(running_workers):
+        if worker.isRunning():
+            worker.wait(timeout_ms)
+    running_workers[:] = [w for w in running_workers if w.isRunning()]

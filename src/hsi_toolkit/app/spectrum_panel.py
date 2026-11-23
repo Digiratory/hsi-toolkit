@@ -10,7 +10,7 @@ from matplotlib.figure import Figure
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QComboBox, QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
-from hsi_toolkit.app.workers import FunctionWorker
+from hsi_toolkit.app.workers import FunctionWorker, shutdown_workers
 from hsi_toolkit.core.annotations import Annotation, rasterize
 from hsi_toolkit.core.spectra import (
     DEFAULT_RIBBON_WIDTH,
@@ -45,6 +45,7 @@ def _ci_setting(index: int) -> Tuple[str, tuple]:
 class SpectrumPanel(QWidget):
     settings_changed = Signal()
     workers_idle = Signal()
+    compute_skipped = Signal(list)  # [(name, reason)] objects the compute failed on
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -128,10 +129,7 @@ class SpectrumPanel(QWidget):
             self._cancel_current["cancelled"] = True
         if not wait:
             return
-        for worker in list(self._running_workers):
-            if worker.isRunning():
-                worker.wait(30000)
-        self._running_workers.clear()
+        shutdown_workers(self._running_workers)
 
     @staticmethod
     def _object_key(ws, ann: Annotation, stat: str, ci) -> tuple:
@@ -187,20 +185,28 @@ class SpectrumPanel(QWidget):
 
         def compute(progress):
             computed = {}
+            skipped: List[tuple] = []
             for i, ann in enumerate(missing):
                 if cancel["cancelled"]:
                     return None
                 progress.emit(int(50 * i / max(len(missing), 1)), f"Объект {ann.name}")
                 key = self._object_key(ws, ann, stat, ci)
-                if ann.kind == "polygon":
-                    mask = rasterize(ann, (ws.lines, ws.samples))
-                    center, lower, upper = polygon_spectrum_stats(ws, mask, stat, ci)
-                    computed[key] = (center, lower, upper)
-                else:
-                    rel, spectra = polyline_profile(ws, ann.points, width=POLYLINE_RIBBON, step=1.0)
-                    computed[key] = (rel, spectra)
+                # One degenerate annotation (empty mask, zero-length line)
+                # must not abort the whole batch: skip it and keep going.
+                try:
+                    if ann.kind == "polygon":
+                        mask = rasterize(ann, (ws.lines, ws.samples))
+                        center, lower, upper = polygon_spectrum_stats(ws, mask, stat, ci)
+                        computed[key] = (center, lower, upper)
+                    else:
+                        rel, spectra = polyline_profile(
+                            ws, ann.points, width=POLYLINE_RIBBON, step=1.0
+                        )
+                        computed[key] = (rel, spectra)
+                except Exception as exc:  # noqa: BLE001 - reported per object
+                    skipped.append((ann.name, f"{type(exc).__name__}: {exc}"))
             progress.emit(100, "Готово")
-            return computed
+            return (computed, skipped)
 
         self._worker = FunctionWorker(compute)
         self._running_workers.append(self._worker)
@@ -229,7 +235,8 @@ class SpectrumPanel(QWidget):
             return
         if self._ws is None:
             return
-        self._cache.update(result)
+        computed, skipped = result
+        self._cache.update(computed)
         stat, ci = _ci_setting(self.ci_combo.currentIndex())
         self._result_polygons = [
             (a.id, *self._cache[self._object_key(self._ws, a, stat, ci)])
@@ -242,6 +249,8 @@ class SpectrumPanel(QWidget):
             if a.kind == "polyline" and self._object_key(self._ws, a, stat, ci) in self._cache
         ]
         self._redraw()
+        if skipped:
+            self.compute_skipped.emit(skipped)
 
     def _on_failed(self, generation: int, message: str) -> None:
         if generation != self._generation:

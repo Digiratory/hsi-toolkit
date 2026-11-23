@@ -32,7 +32,9 @@ def write_envi(
     elif interleave == "bil":
         data = np.ascontiguousarray(np.moveaxis(cube, 1, 0), dtype=dtype)
     elif interleave == "bip":
-        data = np.ascontiguousarray(np.moveaxis(cube, 2, 0), dtype=dtype)
+        # BIP on disk is (lines, samples, bands); moveaxis(2, 0) would write
+        # (samples, bands, lines) and silently corrupt the roundtrip.
+        data = np.ascontiguousarray(np.transpose(cube, (1, 2, 0)), dtype=dtype)
     else:
         raise ValueError(interleave)
     raw_path.write_bytes(data.tobytes())

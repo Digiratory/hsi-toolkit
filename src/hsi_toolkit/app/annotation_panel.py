@@ -117,6 +117,13 @@ class AnnotationPanel(QWidget):
     def _sync_fields(self) -> None:
         ann = self._current_single()
         self._flush_pending_comment(ann)
+        # A same-annotation refresh (visibility toggle, rename, external
+        # annotation_changed) may land inside the comment debounce window:
+        # keep the user's in-progress text instead of overwriting it with the
+        # stored comment; the debounce will apply it via _apply_comment.
+        pending_same = (
+            ann is not None and self._comment_source_id == ann.id and self._comment_timer.isActive()
+        )
         self._comment_source_id = ann.id if ann is not None else None
         if ann is None:
             self.name_edit.clear()
@@ -128,7 +135,7 @@ class AnnotationPanel(QWidget):
             self.comment_edit.setEnabled(True)
             if self.name_edit.text() != ann.name:
                 self.name_edit.setText(ann.name)
-            if self.comment_edit.toPlainText() != ann.comment:
+            if not pending_same and self.comment_edit.toPlainText() != ann.comment:
                 self.comment_edit.setPlainText(ann.comment)
 
     def _flush_pending_comment(self, new_ann) -> None:

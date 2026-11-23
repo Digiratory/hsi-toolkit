@@ -64,6 +64,30 @@ class TestCorrection:
             np.testing.assert_allclose(got, expected, atol=1e-5)
         ws.close()
 
+    def test_reference_without_wavelengths_aligned(self, synthetic_dataset, tmp_path):
+        # Regression: without reference wavelengths the profiles used to be
+        # built in the reference's *native* band order, misapplying them to the
+        # cube's λ-sorted bands. Band-dependent reference values make the
+        # misalignment visible (the stock fixture's references are
+        # band-identical, which hides the bug).
+        white_cube = np.stack(
+            [np.full((LINES, SAMPLES), 3000.0 + 100.0 * b) for b in range(BANDS)]
+        ).astype(np.uint16)
+        dark_cube = np.stack(
+            [np.full((LINES, SAMPLES), 20.0 + 10.0 * b) for b in range(BANDS)]
+        ).astype(np.uint16)
+        white_hdr = write_envi(tmp_path / "WHITEREF_wl.hdr", white_cube, wavelengths=None)
+        dark_hdr = write_envi(tmp_path / "DARKREF_wl.hdr", dark_cube, wavelengths=None)
+        ws = HSIWorkspace.open(synthetic_dataset["cube"], white_hdr, dark_hdr)
+        dark_prof = manual_profile(dark_cube)
+        white_prof = manual_profile(white_cube)
+        cube = synthetic_dataset["cube_raw"]
+        order = np.argsort(WAVELENGTHS)
+        for b in range(BANDS):
+            expected = manual_corrected(cube[order[b]], dark_prof[order[b]], white_prof[order[b]])
+            np.testing.assert_allclose(ws.corrected_band(b), expected, atol=1e-5)
+        ws.close()
+
     def test_correction_normalizes_references(self, synthetic_dataset):
         # Sample == white -> ~1 everywhere; sample == dark -> 0 everywhere.
         ws_white = HSIWorkspace.open(
@@ -128,13 +152,21 @@ class TestCacheAndLowres:
             synthetic_dataset["white"],
             synthetic_dataset["dark"],
         )
+        # With BANDS=5 < the default cache_max=8 eviction never runs and size
+        # assertions pass vacuously; shrink the cache to exercise LRU order.
+        ws._cache_max = 3
         first = ws.corrected_band(0)
         assert ws.corrected_band(0) is first
-        for b in range(BANDS + 4):  # exceeds the cache size
-            ws.corrected_band(b % BANDS)
-        assert len(ws._cache) <= ws._cache_max
-        again = ws.corrected_band(0)
-        np.testing.assert_array_equal(again, first)
+        second = ws.corrected_band(1)
+        ws.corrected_band(2)
+        assert list(ws._cache) == [0, 1, 2]
+        ws.corrected_band(0)  # re-touch: band 1 becomes the LRU entry
+        ws.corrected_band(3)  # evicts band 1, keeps the recently used band 0
+        assert 1 not in ws._cache and 0 in ws._cache
+        assert ws.corrected_band(0) is first
+        recomputed = ws.corrected_band(1)
+        assert recomputed is not second  # recomputed after the eviction
+        np.testing.assert_array_equal(recomputed, second)
         ws.close()
 
     def test_build_lowres_cube(self, synthetic_dataset):
@@ -150,6 +182,19 @@ class TestCacheAndLowres:
         full = ws.corrected_band(0)
         block = full.reshape(8, 4, 8, 4).mean(axis=(1, 3))
         np.testing.assert_allclose(low[0], block, atol=1e-5)
+        ws.close()
+
+    def test_build_lowres_cube_tiny_image(self, tmp_path):
+        # Regression: lines/samples < factor used to produce a (B, 0, 0) cube
+        # and crash the preview's integral spectrum with ZeroDivisionError.
+        cube = np.full((BANDS, 2, 3), 100.0, dtype=np.float32)
+        hdr = write_envi(tmp_path / "tiny.hdr", cube, WAVELENGTHS, envi_data_type=4)
+        ws = HSIWorkspace.open(hdr)
+        low = ws.build_lowres_cube(factor=4)
+        assert low.shape == (BANDS, 1, 1)
+        assert low.dtype == np.float32
+        assert ws.lowres is low
+        np.testing.assert_allclose(low[:, 0, 0], 100.0, atol=1e-5)
         ws.close()
 
     def test_close(self, synthetic_dataset):
@@ -209,6 +254,17 @@ class TestFindReferences:
     def test_bil_interleave_roundtrip(self, synthetic_dataset, tmp_path):
         hdr = write_envi(
             tmp_path / "bil.hdr", synthetic_dataset["cube_raw"], WAVELENGTHS, interleave="bil"
+        )
+        ws = HSIWorkspace.open(hdr)
+        cube = synthetic_dataset["cube_raw"]
+        order = np.argsort(WAVELENGTHS)
+        for b in range(BANDS):
+            np.testing.assert_array_equal(ws.raw_band(b), cube[order[b]])
+        ws.close()
+
+    def test_bip_interleave_roundtrip(self, synthetic_dataset, tmp_path):
+        hdr = write_envi(
+            tmp_path / "bip.hdr", synthetic_dataset["cube_raw"], WAVELENGTHS, interleave="bip"
         )
         ws = HSIWorkspace.open(hdr)
         cube = synthetic_dataset["cube_raw"]
