@@ -7,9 +7,8 @@ from typing import List, Optional
 import numpy as np
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg, NavigationToolbar2QT
 from matplotlib.figure import Figure
-from PySide6.QtCore import Signal
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QCursor
-from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QVBoxLayout, QWidget
 
 from hsi_toolkit.app.canvas.tools import PolylineTool
@@ -50,7 +49,7 @@ def _distance_point_segment(px, py, x0, y0, x1, y1) -> float:
 
 class PreviewCanvas(QWidget):
     annotation_created = Signal(str, list)  # (kind, points)
-    annotation_selected = Signal(str)       # annotation id, "" clears selection
+    annotation_selected = Signal(str)  # annotation id, "" clears selection
     tool_cancelled = Signal()
 
     def __init__(self, parent=None) -> None:
@@ -94,9 +93,7 @@ class PreviewCanvas(QWidget):
         # Preserve the user's pan/zoom across redraws as long as the data
         # extent is unchanged (new dataset -> reset to the full view).
         had_image = self._image_artist is not None
-        prev_limits = (
-            (self.ax.get_xlim(), self.ax.get_ylim()) if had_image else None
-        )
+        prev_limits = (self.ax.get_xlim(), self.ax.get_ylim()) if had_image else None
         if self._image_artist is not None:
             self._image_artist.remove()
         self._image_artist = self.ax.imshow(
@@ -120,8 +117,14 @@ class PreviewCanvas(QWidget):
     def show_message(self, text: str) -> None:
         self._clear_message()
         self._message_artist = self.ax.text(
-            0.5, 0.5, text, transform=self.ax.transAxes,
-            ha="center", va="center", fontsize=12, color="#666666",
+            0.5,
+            0.5,
+            text,
+            transform=self.ax.transAxes,
+            ha="center",
+            va="center",
+            fontsize=12,
+            color="#666666",
         )
         self._canvas.draw_idle()
 
@@ -170,23 +173,35 @@ class PreviewCanvas(QWidget):
             artists: List = []
             if ann.kind == MODE_POLYGON:
                 patch = MplPolygon(
-                    pts, closed=True, edgecolor=color,
-                    facecolor=to_rgba(color, fill_alpha), linewidth=linewidth,
+                    pts,
+                    closed=True,
+                    edgecolor=color,
+                    facecolor=to_rgba(color, fill_alpha),
+                    linewidth=linewidth,
                     zorder=3,
                 )
                 self.ax.add_patch(patch)
                 artists.append(patch)
             else:
                 line = Line2D(
-                    pts[:, 0], pts[:, 1], color=color, linewidth=linewidth,
-                    marker="o", markersize=5.0 if selected else 3.5,
-                    markerfacecolor="white", markeredgecolor=color, zorder=3,
+                    pts[:, 0],
+                    pts[:, 1],
+                    color=color,
+                    linewidth=linewidth,
+                    marker="o",
+                    markersize=5.0 if selected else 3.5,
+                    markerfacecolor="white",
+                    markeredgecolor=color,
+                    zorder=3,
                 )
                 self.ax.add_line(line)
                 artists.append(line)
             if self._label_visible:
                 label = self.ax.text(
-                    pts[0, 0], pts[0, 1], ann.name, color=color,
+                    pts[0, 0],
+                    pts[0, 1],
+                    ann.name,
+                    color=color,
                     fontsize=self._label_fontsize,
                     fontweight="bold" if selected else "normal",
                     bbox=dict(facecolor="white", alpha=0.6, edgecolor="none", pad=1.0),
@@ -225,9 +240,7 @@ class PreviewCanvas(QWidget):
             self._polygon_tool.stop()
         # Polylines are valid from two vertices; only polygons need three.
         if len(points) >= (2 if kind == MODE_POLYLINE else 3):
-            self.annotation_created.emit(
-                kind, [(float(x), float(y)) for x, y in points]
-            )
+            self.annotation_created.emit(kind, [(float(x), float(y)) for x, y in points])
 
     # -- selection ----------------------------------------------------------
 

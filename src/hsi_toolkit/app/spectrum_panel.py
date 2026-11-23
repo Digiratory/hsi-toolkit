@@ -190,35 +190,27 @@ class SpectrumPanel(QWidget):
             for i, ann in enumerate(missing):
                 if cancel["cancelled"]:
                     return None
-                progress.emit(
-                    int(50 * i / max(len(missing), 1)), f"Объект {ann.name}"
-                )
+                progress.emit(int(50 * i / max(len(missing), 1)), f"Объект {ann.name}")
                 key = self._object_key(ws, ann, stat, ci)
                 if ann.kind == "polygon":
                     mask = rasterize(ann, (ws.lines, ws.samples))
                     center, lower, upper = polygon_spectrum_stats(ws, mask, stat, ci)
                     computed[key] = (center, lower, upper)
                 else:
-                    rel, spectra = polyline_profile(
-                        ws, ann.points, width=POLYLINE_RIBBON, step=1.0
-                    )
+                    rel, spectra = polyline_profile(ws, ann.points, width=POLYLINE_RIBBON, step=1.0)
                     computed[key] = (rel, spectra)
             progress.emit(100, "Готово")
             return computed
 
         self._worker = FunctionWorker(compute)
         self._running_workers.append(self._worker)
-        self._worker.finished.connect(
-            lambda worker=self._worker: self._forget_worker(worker)
-        )
+        self._worker.finished.connect(lambda worker=self._worker: self._forget_worker(worker))
         self._worker.finished_ok.connect(
             lambda result, gen=generation, req=list(annotations): self._on_computed(
                 gen, result, req
             )
         )
-        self._worker.failed.connect(
-            lambda message, gen=generation: self._on_failed(gen, message)
-        )
+        self._worker.failed.connect(lambda message, gen=generation: self._on_failed(gen, message))
         self._worker.start()
 
     def _forget_worker(self, worker: FunctionWorker) -> None:
@@ -312,12 +304,8 @@ class SpectrumPanel(QWidget):
             color = ann.color if ann is not None else "#1f77b4"
             name = ann.name if ann is not None else ann_id
             wavelengths = self._ws.wavelengths
-            line, = ax.plot(
-                wavelengths, center, color=color, linewidth=1.6, label=name
-            )
-            ax.fill_between(
-                wavelengths, lower, upper, color=color, alpha=0.3
-            )
+            (line,) = ax.plot(wavelengths, center, color=color, linewidth=1.6, label=name)
+            ax.fill_between(wavelengths, lower, upper, color=color, alpha=0.3)
             drawn += 1
         ax.set_xlabel("Длина волны, нм")
         ax.set_ylabel("Спектральная мощность")
@@ -345,12 +333,14 @@ class SpectrumPanel(QWidget):
             name = ann.name if ann is not None else ann_id
             rel_grid, wl_grid = np.meshgrid(rel, wavelengths, indexing="ij")
             surf = ax.plot_surface(
-                rel_grid, wl_grid, spectra,
-                cmap="viridis", linewidth=0, antialiased=True,
+                rel_grid,
+                wl_grid,
+                spectra,
+                cmap="viridis",
+                linewidth=0,
+                antialiased=True,
             )
-            self.figure.colorbar(
-                surf, cax=cax, label="Спектральная мощность"
-            )
+            self.figure.colorbar(surf, cax=cax, label="Спектральная мощность")
             ax.set_xlabel("Отн. позиция")
             ax.set_ylabel("λ, нм")
             ax.set_zlabel("Мощность")
@@ -374,27 +364,31 @@ class SpectrumPanel(QWidget):
                     aspect="auto",
                     origin="lower",
                     extent=[
-                        float(rel[0]), float(rel[-1]),
-                        float(wavelengths[0]), float(wavelengths[-1]),
+                        float(rel[0]),
+                        float(rel[-1]),
+                        float(wavelengths[0]),
+                        float(wavelengths[-1]),
                     ],
-                    cmap="viridis", interpolation="nearest",
+                    cmap="viridis",
+                    interpolation="nearest",
                 )
-                self.figure.colorbar(
-                    image, ax=ax, shrink=0.8, pad=0.05, label="Мощность"
-                )
+                self.figure.colorbar(image, ax=ax, shrink=0.8, pad=0.05, label="Мощность")
                 ax.set_xlabel("Отн. позиция")
                 ax.set_ylabel("λ, нм")
             else:
                 vmax = float(np.nanmax(spectra)) if spectra.size else 1.0
                 offset = vmax * 1.05 if vmax > 0 else 1.0
                 indices = np.unique(
-                    np.linspace(0, spectra.shape[0] - 1, min(spectra.shape[0], MAX_TRACES))
-                    .astype(int)
+                    np.linspace(0, spectra.shape[0] - 1, min(spectra.shape[0], MAX_TRACES)).astype(
+                        int
+                    )
                 )
                 for j, s in enumerate(indices):
                     ax.plot(
-                        wavelengths, spectra[s] + j * offset,
-                        linewidth=0.8, color="#1f77b4",
+                        wavelengths,
+                        spectra[s] + j * offset,
+                        linewidth=0.8,
+                        color="#1f77b4",
                     )
                 ax.set_xlabel("λ, нм")
                 ax.set_ylabel("Трассы (позиции)")

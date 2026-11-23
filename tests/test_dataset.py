@@ -1,9 +1,8 @@
 import numpy as np
 import pytest
+from conftest import BANDS, LINES, SAMPLES, WAVELENGTHS, write_envi
 
 from hsi_toolkit.core.dataset import HSIWorkspace, find_reference_hdrs
-
-from conftest import BANDS, LINES, SAMPLES, WAVELENGTHS, write_envi
 
 
 def manual_corrected(band_raw, dark_prof, white_prof):
@@ -96,7 +95,9 @@ class TestCorrection:
         )
         with pytest.raises(ValueError):
             HSIWorkspace.open(
-                synthetic_dataset["cube"], white_hdr=narrow_white, dark_hdr=synthetic_dataset["dark"]
+                synthetic_dataset["cube"],
+                white_hdr=narrow_white,
+                dark_hdr=synthetic_dataset["dark"],
             )
 
 

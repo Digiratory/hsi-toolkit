@@ -1,5 +1,7 @@
 # hsi-toolkit
 
+[![ci](https://github.com/Digiratory/hsi-toolkit/actions/workflows/ci.yml/badge.svg)](https://github.com/Digiratory/hsi-toolkit/actions/workflows/ci.yml)
+
 Настольное приложение (PySide6 + matplotlib) для визуализации и анализа
 гиперспектральных кубов (ENVI HDR/RAW, BSQ/BIL/BIP) с векторной разметкой
 полигонов и полилиний.
@@ -90,9 +92,31 @@ uv run pyinstaller --noconfirm hsi-toolkit.spec
 ## Разработка
 
 ```powershell
-uv sync                 # зависимости (numpy, scipy, matplotlib, PySide6, openpyxl)
-uv run pytest           # тесты ядра + offscreen smoke-тест GUI
+uv sync                     # зависимости (numpy, scipy, matplotlib, PySide6, openpyxl)
+uv run pytest               # тесты ядра + offscreen smoke-тест GUI
+uv run ruff check .         # линтер
+uv run ruff format .        # форматирование
 ```
+
+### Pre-commit
+
+Хуки (whitespace/eof, check-yaml/toml, merge-конфликты, ruff + ruff-format)
+ставятся в git один раз и срабатывают при каждом коммите:
+
+```powershell
+uv run pre-commit install       # один раз
+uv run pre-commit run --all-files   # прогон по всем файлам вручную
+```
+
+### CI/CD (GitHub Actions)
+
+- **ci** (`.github/workflows/ci.yml`) — на push в `main` и на все PR:
+  job *lint* (`pre-commit run --all-files`) и job *test* (`pytest -q`
+  на Ubuntu с offscreen Qt).
+- **release** (`.github/workflows/release.yml`) — на теги `v*` и вручную
+  (`workflow_dispatch`): на Windows-раннере гоняются тесты, затем
+  PyInstaller собирает `hsi-toolkit.exe`; exe публикуется как артефакт,
+  а на теге — ещё и как вложение GitHub Release.
 
 Структура:
 

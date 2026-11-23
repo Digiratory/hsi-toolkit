@@ -10,10 +10,9 @@ import pytest
 
 pytest.importorskip("PySide6")
 
+from conftest import BANDS
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QFileDialog
-
-from conftest import BANDS
 
 
 def wait_for(condition, qapp, timeout_s: float = 30.0) -> None:
@@ -90,7 +89,7 @@ def test_smoke_workflow(window, qapp):
     win.spectrum_panel.view_combo.setCurrentText("3D")
     qapp.processEvents()
     assert any("3d" in ax.name.lower() for ax in win.spectrum_panel.figure.axes)
-    assert not win.spectrum_panel.view_combo.isEnabled() is False
+    assert win.spectrum_panel.view_combo.isEnabled() is not False
 
     # Save annotations to JSON and load back
     ann_path = tmp_path / "annotations.json"
@@ -205,8 +204,10 @@ def test_zoom_preserved_and_region_strip(window, qapp):
     low = ws.lowres
     fx = ws.samples / low.shape[2]
     fy = ws.lines / low.shape[1]
-    x0l = int(np.floor(5 / fx)); x1l = int(np.ceil(15 / fx))
-    y0l = int(np.floor(10 / fy)); y1l = int(np.ceil(20 / fy))
+    x0l = int(np.floor(5 / fx))
+    x1l = int(np.ceil(15 / fx))
+    y0l = int(np.floor(10 / fy))
+    y1l = int(np.ceil(20 / fy))
     expected = low[:, y0l:y1l, x0l:x1l].mean(axis=(1, 2))
     np.testing.assert_allclose(panel._integral, expected, rtol=1e-4)
 
@@ -237,8 +238,9 @@ def test_tool_mode_switch(window, qapp):
 
 def test_data_dialog_constructs(window, qapp):
     # Regression: missing QWidget import crashed Файл → Открыть…
-    from hsi_toolkit.app.data_dialog import DataDialog
     from PySide6.QtWidgets import QToolBar
+
+    from hsi_toolkit.app.data_dialog import DataDialog
 
     win, ws, tmp_path = window
     dialog = DataDialog(win)
@@ -259,9 +261,9 @@ def test_polygon_tool_draws(window, qapp, monkeypatch):
     from PySide6.QtCore import QEvent, QPointF, Qt
     from PySide6.QtGui import QMouseEvent
 
-    QInputDialog_getText = (
-        lambda *a, **k: ("Тестовый полигон", True)
-    )
+    def QInputDialog_getText(*a, **k):
+        return ("Тестовый полигон", True)
+
     from PySide6.QtWidgets import QInputDialog
 
     monkeypatch.setattr(QInputDialog, "getText", staticmethod(QInputDialog_getText))
@@ -283,10 +285,15 @@ def test_polygon_tool_draws(window, qapp, monkeypatch):
             "dbl": QEvent.Type.MouseButtonDblClick,
         }[kind]
         buttons = Qt.MouseButton.NoButton if kind == "release" else Qt.MouseButton.LeftButton
-        ev = QMouseEvent(ev_type, pos, pos, Qt.MouseButton.LeftButton, buttons,
-                         Qt.KeyboardModifier.NoModifier)
-        {"press": mc.mousePressEvent, "move": mc.mouseMoveEvent,
-         "release": mc.mouseReleaseEvent, "dbl": mc.mouseDoubleClickEvent}[kind](ev)
+        ev = QMouseEvent(
+            ev_type, pos, pos, Qt.MouseButton.LeftButton, buttons, Qt.KeyboardModifier.NoModifier
+        )
+        {
+            "press": mc.mousePressEvent,
+            "move": mc.mouseMoveEvent,
+            "release": mc.mouseReleaseEvent,
+            "dbl": mc.mouseDoubleClickEvent,
+        }[kind](ev)
         qapp.processEvents()
 
     def to_widget(x, y):
@@ -332,7 +339,10 @@ def test_spectrum_recompute_skipped_for_same_selection(window, qapp):
     from hsi_toolkit.core.annotations import Annotation
 
     line = Annotation(
-        id="d1", kind="polyline", name="Линия", points=[(2.0, 5.0), (20.0, 5.0)],
+        id="d1",
+        kind="polyline",
+        name="Линия",
+        points=[(2.0, 5.0), (20.0, 5.0)],
         color="#1f77b4",
     )
     win.add_annotation(line)
@@ -372,9 +382,7 @@ def test_polyline_tool_two_points(window, qapp, monkeypatch):
     from PySide6.QtGui import QMouseEvent
     from PySide6.QtWidgets import QInputDialog
 
-    monkeypatch.setattr(
-        QInputDialog, "getText", staticmethod(lambda *a, **k: ("Линия 1", True))
-    )
+    monkeypatch.setattr(QInputDialog, "getText", staticmethod(lambda *a, **k: ("Линия 1", True)))
 
     canvas = win.preview_panel.canvas
     mc = canvas._canvas
@@ -393,10 +401,15 @@ def test_polyline_tool_two_points(window, qapp, monkeypatch):
             "dbl": QEvent.Type.MouseButtonDblClick,
         }[kind]
         buttons = Qt.MouseButton.NoButton if kind == "release" else Qt.MouseButton.LeftButton
-        ev = QMouseEvent(ev_type, pos, pos, Qt.MouseButton.LeftButton, buttons,
-                         Qt.KeyboardModifier.NoModifier)
-        {"press": mc.mousePressEvent, "move": mc.mouseMoveEvent,
-         "release": mc.mouseReleaseEvent, "dbl": mc.mouseDoubleClickEvent}[kind](ev)
+        ev = QMouseEvent(
+            ev_type, pos, pos, Qt.MouseButton.LeftButton, buttons, Qt.KeyboardModifier.NoModifier
+        )
+        {
+            "press": mc.mousePressEvent,
+            "move": mc.mouseMoveEvent,
+            "release": mc.mouseReleaseEvent,
+            "dbl": mc.mouseDoubleClickEvent,
+        }[kind](ev)
         qapp.processEvents()
 
     def to_widget(x, y):
@@ -513,8 +526,7 @@ def test_stats_tab_workflow(window, qapp, monkeypatch):
     highlighted = [
         b
         for b in range(BANDS)
-        if win.stats_panel.table.item(b, 0).background().style()
-        == Qt.BrushStyle.SolidPattern
+        if win.stats_panel.table.item(b, 0).background().style() == Qt.BrushStyle.SolidPattern
     ]
     assert len(highlighted) == BANDS
 
@@ -564,9 +576,7 @@ def test_stats_tab_workflow(window, qapp, monkeypatch):
         staticmethod(lambda *a, **k: (str(out_path), "CSV (*.csv)")),
     )
     win.stats_panel._export_csv()
-    wait_for(
-        lambda: not win.stats_panel.is_busy and not win.stats_panel._export_busy, qapp
-    )
+    wait_for(lambda: not win.stats_panel.is_busy and not win.stats_panel._export_busy, qapp)
     assert out_path.exists()
     raw = out_path.read_bytes()
     assert raw.startswith(b"\xef\xbb\xbf")
@@ -666,10 +676,7 @@ def test_stats_skipped_roi_and_fast_recompute(window, qapp):
     qapp.processEvents()
     assert win.stats_panel._result is result_before
     assert len(win.stats_panel._running_workers) == workers_before
-    assert (
-        win.stats_panel.table.horizontalHeaderItem(0).text()
-        == "Тёмная vs Светлая зона"
-    )
+    assert win.stats_panel.table.horizontalHeaderItem(0).text() == "Тёмная vs Светлая зона"
 
     # Correction/alpha changes re-adjust the cached p-values synchronously:
     # no worker starts, no memmap extraction happens.
@@ -684,9 +691,7 @@ def test_stats_skipped_roi_and_fast_recompute(window, qapp):
     win.stats_panel.correction_combo.setCurrentIndex(2)  # без поправки
     qapp.processEvents()
     assert win.stats_panel._result.correction == "none"
-    np.testing.assert_array_equal(
-        win.stats_panel._result.p_adjusted, win.stats_panel._result.p_raw
-    )
+    np.testing.assert_array_equal(win.stats_panel._result.p_adjusted, win.stats_panel._result.p_raw)
 
 
 def test_stats_help_button(window, qapp):
@@ -812,9 +817,7 @@ def test_data_dialog_remembers_last_dir(qapp, tmp_path, monkeypatch):
     assert settings_module.last_data_dir() == picked.parent
 
     # A cancelled file dialog must not change the stored folder.
-    monkeypatch.setattr(
-        QFileDialog, "getOpenFileName", staticmethod(lambda *a, **k: ("", ""))
-    )
+    monkeypatch.setattr(QFileDialog, "getOpenFileName", staticmethod(lambda *a, **k: ("", "")))
     other = tmp_path / "other"
     other.mkdir()
     settings_module.set_last_data_dir(other)
@@ -830,9 +833,7 @@ def test_data_dialog_remembers_last_dir(qapp, tmp_path, monkeypatch):
         return ("", "")
 
     dialog2 = data_dialog.DataDialog()
-    monkeypatch.setattr(
-        QFileDialog, "getOpenFileName", staticmethod(capture_start)
-    )
+    monkeypatch.setattr(QFileDialog, "getOpenFileName", staticmethod(capture_start))
     dialog2._browse(dialog2.white_edit)
     assert starts and Path(starts[0]) == other
     dialog2.deleteLater()

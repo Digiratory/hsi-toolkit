@@ -140,9 +140,7 @@ class MainWindow(QMainWindow):
         ):
             action = QAction(label, self)
             action.setCheckable(True)
-            action.triggered.connect(
-                lambda checked, m=mode: self._set_tool(m) if checked else None
-            )
+            action.triggered.connect(lambda checked, m=mode: self._set_tool(m) if checked else None)
             tool_group.addAction(action)
             toolbar.addAction(action)
             self._tool_actions[mode] = action
@@ -192,9 +190,7 @@ class MainWindow(QMainWindow):
         self._status_progress.setVisible(False)
         self.apply_workspace(ws)
         if annotations_path is not None and Path(annotations_path).is_file():
-            self._apply_annotation_set(
-                AnnotationSet.load(annotations_path), warn_on_error=True
-            )
+            self._apply_annotation_set(AnnotationSet.load(annotations_path), warn_on_error=True)
         self.statusBar().showMessage("Набор загружен")
 
     def apply_workspace(self, ws: HSIWorkspace) -> None:
@@ -241,11 +237,7 @@ class MainWindow(QMainWindow):
         self._lowres_worker.start()
 
     def _has_active_readers(self) -> bool:
-        return (
-            self.worker_pool.is_busy
-            or self.spectrum_panel.is_busy
-            or self.stats_panel.is_busy
-        )
+        return self.worker_pool.is_busy or self.spectrum_panel.is_busy or self.stats_panel.is_busy
 
     def _flush_pending_closes(self) -> None:
         """Close deferred workspaces once no background reader is running."""
@@ -309,9 +301,7 @@ class MainWindow(QMainWindow):
     def _on_annotation_created(self, kind: str, points) -> None:
         count = sum(1 for a in self.annotations if a.kind == kind) + 1
         default_name = ("Полигон %d" if kind == MODE_POLYGON else "Линия %d") % count
-        name, ok = QInputDialog.getText(
-            self, "Новый объект", "Имя объекта:", text=default_name
-        )
+        name, ok = QInputDialog.getText(self, "Новый объект", "Имя объекта:", text=default_name)
         self._set_tool(MODE_SELECT)
         if not ok:
             return
@@ -397,7 +387,9 @@ class MainWindow(QMainWindow):
             return
         self._apply_annotation_set(AnnotationSet.load(path))
 
-    def _apply_annotation_set(self, annotation_set: AnnotationSet, warn_on_error: bool = False) -> None:
+    def _apply_annotation_set(
+        self, annotation_set: AnnotationSet, warn_on_error: bool = False
+    ) -> None:
         info = annotation_set.image_info
         if self.workspace is not None and info:
             if (

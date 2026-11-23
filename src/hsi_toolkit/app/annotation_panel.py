@@ -7,10 +7,10 @@ from typing import List, Optional
 from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QIcon, QPixmap
 from PySide6.QtWidgets import (
-    QPlainTextEdit,
     QLineEdit,
     QListWidget,
     QListWidgetItem,
+    QPlainTextEdit,
     QPushButton,
     QVBoxLayout,
     QWidget,
@@ -22,9 +22,9 @@ COMMENT_DEBOUNCE_MS = 300
 
 
 class AnnotationPanel(QWidget):
-    selection_changed = Signal(list)        # ordered annotation ids
-    annotation_changed = Signal(str)        # id after name/comment/visibility edit
-    annotations_deleted = Signal(list)      # ids
+    selection_changed = Signal(list)  # ordered annotation ids
+    annotation_changed = Signal(str)  # id after name/comment/visibility edit
+    annotations_deleted = Signal(list)  # ids
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -79,9 +79,7 @@ class AnnotationPanel(QWidget):
                 | Qt.ItemFlag.ItemIsSelectable
                 | Qt.ItemFlag.ItemIsUserCheckable
             )
-            item.setCheckState(
-                Qt.CheckState.Checked if ann.visible else Qt.CheckState.Unchecked
-            )
+            item.setCheckState(Qt.CheckState.Checked if ann.visible else Qt.CheckState.Unchecked)
             if not ann.visible:
                 item.setForeground(QColor("#999999"))
             item.setToolTip(f"{ann.name}\n{ann.comment}")

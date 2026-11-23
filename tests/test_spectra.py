@@ -1,13 +1,12 @@
 import numpy as np
 import pytest
+from conftest import BANDS, LINES, SAMPLES
 
 from hsi_toolkit.core.spectra import (
     polygon_spectrum_stats,
     polyline_profile,
     polyline_samples,
 )
-
-from conftest import BANDS, LINES, SAMPLES
 
 
 def _ws(synthetic_dataset):

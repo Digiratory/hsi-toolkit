@@ -49,12 +49,8 @@ def ribbon_pixel_indices(
     """Ribbon pixel index arrays (ys, xs), each (width, n) — shared by the
     profile sampler and the polyline rasterizer so they can never diverge."""
     h, w = int(shape_hw[0]), int(shape_hw[1])
-    xs = np.clip(
-        np.round(cx[None, :] + ribbon_offsets(width)[:, None] * px).astype(int), 0, w - 1
-    )
-    ys = np.clip(
-        np.round(cy[None, :] + ribbon_offsets(width)[:, None] * py).astype(int), 0, h - 1
-    )
+    xs = np.clip(np.round(cx[None, :] + ribbon_offsets(width)[:, None] * px).astype(int), 0, w - 1)
+    ys = np.clip(np.round(cy[None, :] + ribbon_offsets(width)[:, None] * py).astype(int), 0, h - 1)
     return ys, xs
 
 
@@ -144,9 +140,7 @@ def polyline_profile(
     Returns ``(rel_positions (S,), spectra (S, B))`` with positions in 0..1 and
     spectra as float32 in the workspace's working values (corrected or raw).
     """
-    ribbon, positions = gather_polyline_ribbon(
-        ws, points, width, step, corrected=ws.has_references
-    )
+    ribbon, positions = gather_polyline_ribbon(ws, points, width, step, corrected=ws.has_references)
     spectra = np.transpose(np.median(ribbon, axis=2)).astype(np.float32)
     return positions.astype(np.float64), spectra
 
@@ -159,9 +153,7 @@ def mask_band_values(ws, mask: np.ndarray) -> np.ndarray:
     """
     mask = np.asarray(mask, dtype=bool)
     if mask.shape != (ws.lines, ws.samples):
-        raise ValueError(
-            f"Mask shape {mask.shape} does not match image {(ws.lines, ws.samples)}"
-        )
+        raise ValueError(f"Mask shape {mask.shape} does not match image {(ws.lines, ws.samples)}")
     n_pixels = int(mask.sum())
     if n_pixels == 0:
         raise ValueError("Empty mask")
@@ -203,9 +195,7 @@ def _percentile_interval(values: np.ndarray, ci: CI) -> Tuple[np.ndarray, np.nda
     return result[0], result[1]
 
 
-def _std_interval(
-    values: np.ndarray, center: np.ndarray, ci: CI
-) -> Tuple[np.ndarray, np.ndarray]:
+def _std_interval(values: np.ndarray, center: np.ndarray, ci: CI) -> Tuple[np.ndarray, np.ndarray]:
     if not (isinstance(ci, tuple) and len(ci) == 2 and ci[0] == "std"):
         raise ValueError('For stat="mean" use ci=("std", k)')
     k = float(ci[1])

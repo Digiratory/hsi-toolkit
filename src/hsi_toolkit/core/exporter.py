@@ -24,11 +24,39 @@ from hsi_toolkit.core.spectra import (
 )
 
 _TRANSLIT = {
-    "а": "a", "б": "b", "в": "v", "г": "g", "д": "d", "е": "e", "ё": "e",
-    "ж": "zh", "з": "z", "и": "i", "й": "y", "к": "k", "л": "l", "м": "m",
-    "н": "n", "о": "o", "п": "p", "р": "r", "с": "s", "т": "t", "у": "u",
-    "ф": "f", "х": "kh", "ц": "ts", "ч": "ch", "ш": "sh", "щ": "shch",
-    "ъ": "", "ы": "y", "ь": "", "э": "e", "ю": "yu", "я": "ya",
+    "а": "a",
+    "б": "b",
+    "в": "v",
+    "г": "g",
+    "д": "d",
+    "е": "e",
+    "ё": "e",
+    "ж": "zh",
+    "з": "z",
+    "и": "i",
+    "й": "y",
+    "к": "k",
+    "л": "l",
+    "м": "m",
+    "н": "n",
+    "о": "o",
+    "п": "p",
+    "р": "r",
+    "с": "s",
+    "т": "t",
+    "у": "u",
+    "ф": "f",
+    "х": "kh",
+    "ц": "ts",
+    "ч": "ch",
+    "ш": "sh",
+    "щ": "shch",
+    "ъ": "",
+    "ы": "y",
+    "ь": "",
+    "э": "e",
+    "ю": "yu",
+    "я": "ya",
 }
 
 
@@ -61,9 +89,7 @@ def export_npz(
     if corrected and not ws.has_references:
         raise ValueError("Corrected export requires white and dark references")
 
-    arrays: Dict[str, np.ndarray] = {
-        "wavelengths": np.asarray(ws.wavelengths, dtype=np.float64)
-    }
+    arrays: Dict[str, np.ndarray] = {"wavelengths": np.asarray(ws.wavelengths, dtype=np.float64)}
     used_keys: set = set()
     meta_objects: List[Dict] = []
     for index, ann in enumerate(anns, start=1):
@@ -128,7 +154,5 @@ def _polygon_arrays(
 def _polyline_arrays(
     ws, ann: Annotation, corrected: bool, ribbon_width: int
 ) -> Tuple[np.ndarray, np.ndarray, int]:
-    data, positions = gather_polyline_ribbon(
-        ws, ann.points, ribbon_width, 1.0, corrected=corrected
-    )
+    data, positions = gather_polyline_ribbon(ws, ann.points, ribbon_width, 1.0, corrected=corrected)
     return data, positions, ribbon_width

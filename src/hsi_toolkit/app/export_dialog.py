@@ -30,9 +30,7 @@ from hsi_toolkit.core.spectra import DEFAULT_RIBBON_WIDTH
 
 
 class ExportDialog(QDialog):
-    def __init__(
-        self, ws, annotations: AnnotationSet, pool: WorkerPool, parent=None
-    ) -> None:
+    def __init__(self, ws, annotations: AnnotationSet, pool: WorkerPool, parent=None) -> None:
         super().__init__(parent)
         self.setWindowTitle("Экспорт участков в NPZ")
         self._ws = ws
@@ -44,13 +42,8 @@ class ExportDialog(QDialog):
         for ann in annotations:
             item = QListWidgetItem(f"{ann.name} ({ann.kind})")
             item.setData(Qt.ItemDataRole.UserRole, ann.id)
-            item.setFlags(
-                Qt.ItemFlag.ItemIsEnabled
-                | Qt.ItemFlag.ItemIsUserCheckable
-            )
-            item.setCheckState(
-                Qt.CheckState.Checked if ann.visible else Qt.CheckState.Unchecked
-            )
+            item.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsUserCheckable)
+            item.setCheckState(Qt.CheckState.Checked if ann.visible else Qt.CheckState.Unchecked)
             self.list_widget.addItem(item)
 
         self.corrected_radio = QRadioButton("Корректированный куб (float32, 0..1)")
@@ -75,11 +68,9 @@ class ExportDialog(QDialog):
         ribbon_layout.addWidget(self.ribbon_spin)
         ribbon_layout.addStretch(1)
 
-        self.path_edit = QLineEdit(
-            str(Path(ws.hdr_path).with_suffix(".export.npz"))
-        )
+        self.path_edit = QLineEdit(str(Path(ws.hdr_path).with_suffix(".export.npz")))
         path_row = QHBoxLayout()
-        path_row.addWidget(new := QLabel("Файл:"))
+        path_row.addWidget(QLabel("Файл:"))
         path_row.addWidget(self.path_edit, stretch=1)
         browse = QPushButton("Обзор…")
         browse.clicked.connect(self._browse)
@@ -172,8 +163,7 @@ class ExportDialog(QDialog):
         QMessageBox.information(
             self,
             "Экспорт завершён",
-            f"Экспортировано объектов: {len(keys)}\n"
-            + "\n".join(f"• {k}" for k in keys),
+            f"Экспортировано объектов: {len(keys)}\n" + "\n".join(f"• {k}" for k in keys),
         )
         self.accept()
 

@@ -1,4 +1,5 @@
 """PySide6 application: entry point and Qt backend selection."""
+
 from __future__ import annotations
 
 import os

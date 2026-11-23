@@ -74,8 +74,8 @@ def synthetic_dataset(tmp_path: Path) -> dict:
     # A darker quadrant so percentile stretches have some variance.
     cube[:, :8, :8] = (cube[:, :8, :8] * 0.4).astype(np.uint16)
 
-    white_profile = (3800.0 + 100.0 * col_ramp / SAMPLES)
-    dark_profile = (50.0 + 10.0 * col_ramp / SAMPLES)
+    white_profile = 3800.0 + 100.0 * col_ramp / SAMPLES
+    dark_profile = 50.0 + 10.0 * col_ramp / SAMPLES
     white_cube = np.stack(
         [np.broadcast_to(white_profile, (LINES, SAMPLES)).copy() for _ in range(BANDS)]
     ).astype(np.uint16)

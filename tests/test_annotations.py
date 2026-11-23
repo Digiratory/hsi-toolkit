@@ -48,9 +48,7 @@ class TestAnnotation:
                 {"id": "x", "kind": "polygon", "name": "n", "points": [[0, 0], [1, 1]]}
             )
         with pytest.raises(ValueError):
-            Annotation.from_dict(
-                {"id": "x", "kind": "polyline", "name": "n", "points": [[0, 0]]}
-            )
+            Annotation.from_dict({"id": "x", "kind": "polyline", "name": "n", "points": [[0, 0]]})
 
     def test_roundtrip_dict(self):
         ann = make_polygon()
@@ -128,7 +126,9 @@ class TestRasterizePolygon:
 
     def test_polygon_clipped_to_shape(self):
         ann = Annotation(
-            id="p", kind="polygon", name="x",
+            id="p",
+            kind="polygon",
+            name="x",
             points=[(-5.0, -5.0), (50.0, -5.0), (50.0, 50.0), (-5.0, 50.0)],
         )
         mask = rasterize(ann, (8, 8))
@@ -156,18 +156,14 @@ class TestRasterizePolyline:
         assert not mask[8:].any()
 
     def test_diagonal_endpoints_covered(self):
-        ann = Annotation(
-            id="d", kind="polyline", name="diag", points=[(0.0, 0.0), (10.0, 10.0)]
-        )
+        ann = Annotation(id="d", kind="polyline", name="diag", points=[(0.0, 0.0), (10.0, 10.0)])
         mask = rasterize(ann, (16, 16), ribbon_width=3)
         assert mask[0, 0]
         assert mask[10, 10]
         assert mask.sum() >= 20
 
     def test_width1_line(self):
-        ann = Annotation(
-            id="d", kind="polyline", name="line", points=[(2.0, 6.0), (10.0, 6.0)]
-        )
+        ann = Annotation(id="d", kind="polyline", name="line", points=[(2.0, 6.0), (10.0, 6.0)])
         mask = rasterize(ann, (16, 16), ribbon_width=1)
         assert mask[6, 2:11].all()
         assert not mask[5].any()

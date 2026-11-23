@@ -39,9 +39,9 @@ from hsi_toolkit.core.stats import (
     CORRECTION_BH,
     CORRECTION_HOLM,
     CORRECTION_NONE,
-    RoiStatsResult,
     TEST_MANN_WHITNEY,
     TEST_WELCH,
+    RoiStatsResult,
     bh_adjust,
     export_csv,
     export_xlsx,
@@ -80,25 +80,44 @@ def _fmt(value: float, spec: str = ".4g") -> str:
 
 _STATS_HELP_HTML = """
 <h3>Сравнение зон ROI по каналам</h3>
-<p>Таблица: строки — каналы (длины волн), столбцы — пары зон («A vs B» в порядке списка видимых полигонов). Значения берутся из тех же данных, что и в панели «Спектры» (corrected при наличии референсов, иначе raw).</p>
+<p>Таблица: строки — каналы (длины волн), столбцы — пары зон («A vs B» в порядке списка
+видимых полигонов). Значения берутся из тех же данных, что и в панели «Спектры»
+(corrected при наличии референсов, иначе raw).</p>
 <h4>Эталон</h4>
-<p>Это зона, относительно которой считается <b>ΔR,% = ΔR / среднее(эталон) × 100</b>. Это единственная метрика, зависящая от эталона: ΔR, p-значения, d и AUC считаются для пары напрямую и при смене эталона не меняются. Чтобы увидеть эффект смены эталона, переключите «Ячека» в «ΔR, %».</p>
+<p>Это зона, относительно которой считается <b>ΔR,% = ΔR / среднее(эталон) × 100</b>.
+Это единственная метрика, зависящая от эталона: ΔR, p-значения, d и AUC считаются для пары
+напрямую и при смене эталона не меняются. Чтобы увидеть эффект смены эталона,
+переключите «Ячека» в «ΔR, %».</p>
 <h4>Метрики</h4>
 <ul>
 <li><b>ΔR</b> = среднее(A) − среднее(B).</li>
-<li><b>ΔR,%</b> — ΔR относительно среднего эталонной зоны, в процентах (среднее эталона = 0 → не определено).</li>
+<li><b>ΔR,%</b> — ΔR относительно среднего эталонной зоны, в процентах
+(среднее эталона = 0 → не определено).</li>
 <li><b>Медианы, ΔR медиан</b> — робастный вариант ΔR по медианам зон (в экспорте).</li>
-<li><b>Cohen's d</b> — ΔR, нормированная на объединённое СКО (ddof=1); ориентировочно: 0.2 — малый, 0.5 — средний, 0.8 — большой эффект. Нулевая дисперсия → не определено.</li>
-<li><b>Mann–Whitney U</b> (по умолчанию) — непараметрический ранговый тест, двусторонний p; не требует нормальности.</li>
-<li><b>t-тест Уэлча</b> — параметрический тест для нормально распределённых данных с разными дисперсиями.</li>
-<li><b>AUC</b> = U₁/(n₁·n₂) = P(A &gt; B) — вероятность, что случайный пиксель зоны A больше случайного пикселя зоны B. 0.5 — распределения неразличимы; 1 или 0 — полное разделение (направление зависит от порядка зон в паре). Считается всегда, независимо от выбранного теста.</li>
+<li><b>Cohen's d</b> — ΔR, нормированная на объединённое СКО (ddof=1); ориентировочно:
+0.2 — малый, 0.5 — средний, 0.8 — большой эффект. Нулевая дисперсия → не определено.</li>
+<li><b>Mann–Whitney U</b> (по умолчанию) — непараметрический ранговый тест, двусторонний p;
+не требует нормальности.</li>
+<li><b>t-тест Уэлча</b> — параметрический тест для нормально распределённых данных
+с разными дисперсиями.</li>
+<li><b>AUC</b> = U₁/(n₁·n₂) = P(A &gt; B) — вероятность, что случайный пиксель зоны A
+больше случайного пикселя зоны B. 0.5 — распределения неразличимы; 1 или 0 — полное
+разделение (направление зависит от порядка зон в паре). Считается всегда, независимо
+от выбранного теста.</li>
 </ul>
 <h4>Поправка на множественные сравнения</h4>
-<p>Проверяется сразу вся семья гипотез (каналы × пары), поэтому «сырые» p-значения завышают значимость. Поправки: <b>Холм</b> (по умолчанию, консервативная), <b>FDR Бенджамини–Хохберга</b> (контролирует ожидаемую долю ложных отклонений, мягче), <b>без поправки</b>. p = NaN (мало данных, вырожденные выборки) проходит через поправку без изменений.</p>
+<p>Проверяется сразу вся семья гипотез (каналы × пары), поэтому «сырые» p-значения
+завышают значимость. Поправки: <b>Холм</b> (по умолчанию, консервативная),
+<b>FDR Бенджамини–Хохберга</b> (контролирует ожидаемую долю ложных отклонений, мягче),
+<b>без поправки</b>. p = NaN (мало данных, вырожденные выборки) проходит через поправку
+без изменений.</p>
 <h4>α и подсветка</h4>
-<p>Ячейка подсвечивается, если скорректированное p &lt; α. Выбор «Ячейка» влияет только на отображение; тултип ячейки показывает все метрики пары в этом канале.</p>
-<p><i>Замечание: пиксели внутри полигона считаются независимыми выборками; пространственная автокорреляция завышает значимость.</i></p>
+<p>Ячейка подсвечивается, если скорректированное p &lt; α. Выбор «Ячейка» влияет только
+на отображение; тултип ячейки показывает все метрики пары в этом канале.</p>
+<p><i>Замечание: пиксели внутри полигона считаются независимыми выборками;
+пространственная автокорреляция завышает значимость.</i></p>
 """
+
 
 class StatsPanel(QWidget):
     """«Статистика»: таблица «каналы × пары зон» с фоновой калькуляцией."""
@@ -134,12 +153,8 @@ class StatsPanel(QWidget):
         self.xlsx_button = QPushButton("Экспорт XLSX…")
         self.csv_button.setEnabled(False)
         self.xlsx_button.setEnabled(False)
-        self.csv_button.setToolTip(
-            "Экспорт таблицы «каналы × пары» в CSV (utf-8-sig)"
-        )
-        self.xlsx_button.setToolTip(
-            "Экспорт таблицы «каналы × пары» в Excel (XLSX)"
-        )
+        self.csv_button.setToolTip("Экспорт таблицы «каналы × пары» в CSV (utf-8-sig)")
+        self.xlsx_button.setToolTip("Экспорт таблицы «каналы × пары» в Excel (XLSX)")
         self.help_button = QPushButton()
         self.help_button.setIcon(
             self.style().standardIcon(QStyle.StandardPixmap.SP_MessageBoxQuestion)
@@ -228,9 +243,7 @@ class StatsPanel(QWidget):
 
     def _settings(self) -> Tuple[str, str, float]:
         test = TEST_BY_INDEX.get(self.test_combo.currentIndex(), TEST_MANN_WHITNEY)
-        correction = CORRECTION_BY_INDEX.get(
-            self.correction_combo.currentIndex(), CORRECTION_HOLM
-        )
+        correction = CORRECTION_BY_INDEX.get(self.correction_combo.currentIndex(), CORRECTION_HOLM)
         alpha_index = self.alpha_combo.currentIndex()
         alpha = ALPHA_VALUES[alpha_index] if 0 <= alpha_index < len(ALPHA_VALUES) else 0.05
         return test, correction, alpha
@@ -287,9 +300,7 @@ class StatsPanel(QWidget):
         rois = list(self._rois)
         test, correction, alpha = self._settings()
         requested_ref_id = self.ref_combo.currentData()
-        ref_position = next(
-            (i for i, a in enumerate(rois) if a.id == requested_ref_id), 0
-        )
+        ref_position = next((i for i, a in enumerate(rois) if a.id == requested_ref_id), 0)
         extraction_key = (key[0], key[1])
         bundle = self._extraction_cache.get(extraction_key)
 
@@ -301,9 +312,7 @@ class StatsPanel(QWidget):
                 for i, ann in enumerate(rois):
                     if cancel["cancelled"]:
                         return None
-                    progress.emit(
-                        int(60 * i / max(len(rois), 1)), f"Извлечение: {ann.name}"
-                    )
+                    progress.emit(int(60 * i / max(len(rois), 1)), f"Извлечение: {ann.name}")
                     try:
                         mask = rasterize(ann, (ws.lines, ws.samples))
                         samples.append(mask_band_values(ws, mask))
@@ -346,15 +355,11 @@ class StatsPanel(QWidget):
 
         self._worker = FunctionWorker(compute)
         self._running_workers.append(self._worker)
-        self._worker.finished.connect(
-            lambda worker=self._worker: self._forget_worker(worker)
-        )
+        self._worker.finished.connect(lambda worker=self._worker: self._forget_worker(worker))
         self._worker.finished_ok.connect(
             lambda payload, gen=generation: self._on_computed(gen, payload)
         )
-        self._worker.failed.connect(
-            lambda message, gen=generation: self._on_failed(gen, message)
-        )
+        self._worker.failed.connect(lambda message, gen=generation: self._on_failed(gen, message))
         self._worker.start()
 
     def _forget_worker(self, worker: FunctionWorker) -> None:
@@ -487,12 +492,8 @@ class StatsPanel(QWidget):
         self.table.clear()
         self.table.setRowCount(n_bands)
         self.table.setColumnCount(n_pairs)
-        self.table.setHorizontalHeaderLabels(
-            [self._pair_label(result, p) for p in range(n_pairs)]
-        )
-        self.table.setVerticalHeaderLabels(
-            [f"{wl:.1f} нм" for wl in result.wavelengths]
-        )
+        self.table.setHorizontalHeaderLabels([self._pair_label(result, p) for p in range(n_pairs)])
+        self.table.setVerticalHeaderLabels([f"{wl:.1f} нм" for wl in result.wavelengths])
         for p in range(n_pairs):
             for b in range(n_bands):
                 item = QTableWidgetItem(_fmt(values[p, b]))
@@ -544,9 +545,7 @@ class StatsPanel(QWidget):
         suffix = ".stats.csv" if kind == "csv" else ".stats.xlsx"
         default = str(Path(self._ws.hdr_path).with_suffix(suffix))
         file_filter = (
-            "CSV (*.csv);;All files (*)"
-            if kind == "csv"
-            else "Excel (*.xlsx);;All files (*)"
+            "CSV (*.csv);;All files (*)" if kind == "csv" else "Excel (*.xlsx);;All files (*)"
         )
         path, _ = QFileDialog.getSaveFileName(
             self, "Экспорт CSV" if kind == "csv" else "Экспорт XLSX", default, file_filter

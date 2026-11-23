@@ -138,12 +138,23 @@ class PolylineTool(QObject):
         from matplotlib.lines import Line2D
 
         self._line = Line2D(
-            [], [], color="#d62728", linewidth=1.5, marker="o",
-            markersize=4.0, markerfacecolor="white", markeredgecolor="#d62728",
+            [],
+            [],
+            color="#d62728",
+            linewidth=1.5,
+            marker="o",
+            markersize=4.0,
+            markerfacecolor="white",
+            markeredgecolor="#d62728",
             zorder=5,
         )
         self._preview = Line2D(
-            [], [], color="#d62728", linewidth=1.0, linestyle="--", zorder=5,
+            [],
+            [],
+            color="#d62728",
+            linewidth=1.0,
+            linestyle="--",
+            zorder=5,
         )
         self._preview.set_visible(False)
         self._owner.ax.add_line(self._line)

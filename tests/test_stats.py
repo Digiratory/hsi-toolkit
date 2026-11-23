@@ -1,7 +1,9 @@
 import csv
+
 import numpy as np
 import openpyxl
 import pytest
+from conftest import BANDS, LINES, SAMPLES
 from scipy.stats import mannwhitneyu, ttest_ind
 
 from hsi_toolkit.core.annotations import Annotation, rasterize
@@ -19,8 +21,6 @@ from hsi_toolkit.core.stats import (
     table_rows,
     welch_test,
 )
-
-from conftest import BANDS, LINES, SAMPLES
 
 
 def _ws(synthetic_dataset):
@@ -49,9 +49,7 @@ class TestCohenD:
     def test_matches_manual_pooled_formula(self):
         a = np.array([1.0, 2.0, 3.0, 4.0])
         b = np.array([3.0, 4.0, 5.0, 7.0])
-        sp = np.sqrt(
-            (3 * a.var(ddof=1) + 3 * b.var(ddof=1)) / (4 + 4 - 2)
-        )
+        sp = np.sqrt((3 * a.var(ddof=1) + 3 * b.var(ddof=1)) / (4 + 4 - 2))
         expected = (a.mean() - b.mean()) / sp
         assert cohen_d(a, b) == pytest.approx(expected, abs=1e-12)
 
@@ -134,22 +132,16 @@ class TestHolmBH:
         assert (np.diff(adjusted) >= 0).all()
 
     def test_clipped_to_one(self):
-        np.testing.assert_allclose(
-            holm_adjust(np.array([0.5, 0.6, 0.7])), [1.0, 1.0, 1.0]
-        )
+        np.testing.assert_allclose(holm_adjust(np.array([0.5, 0.6, 0.7])), [1.0, 1.0, 1.0])
 
     def test_nan_passes_through_and_family_is_finite_only(self):
         p = np.array([np.nan, 0.01, 0.03])
-        np.testing.assert_allclose(
-            holm_adjust(p), [np.nan, 0.02, 0.03]
-        )
+        np.testing.assert_allclose(holm_adjust(p), [np.nan, 0.02, 0.03])
         np.testing.assert_allclose(bh_adjust(p), [np.nan, 0.02, 0.03])
 
         # Multipliers use the count of finite p's, not the array length.
         p = np.array([0.5, np.nan, 0.4])
-        np.testing.assert_allclose(
-            holm_adjust(p), [0.8, np.nan, 0.8], equal_nan=True
-        )
+        np.testing.assert_allclose(holm_adjust(p), [0.8, np.nan, 0.8], equal_nan=True)
 
     def test_correction_over_flattened_family_is_order_independent(self):
         p = np.array([[0.01, 0.5, np.nan], [0.2, 0.04, 0.6]])
@@ -201,9 +193,7 @@ class TestPairwiseRoiStats:
         assert (result.p_adjusted < 1e-6).all()
         assert (result.delta_pct < 0).all()  # dark zone below bright reference
 
-        reversed_result = pairwise_roi_stats(
-            samples[::-1], ["Светлая", "Тёмная"], ref_index=0
-        )
+        reversed_result = pairwise_roi_stats(samples[::-1], ["Светлая", "Тёмная"], ref_index=0)
         np.testing.assert_allclose(reversed_result.auc, 1.0, atol=1e-9)
         ws.close()
 
@@ -217,9 +207,7 @@ class TestPairwiseRoiStats:
         mean_b = vb.mean(axis=1, dtype=np.float64)
         expected_pct = (mean_a - mean_b) / mean_b * 100.0
         np.testing.assert_allclose(result.delta_pct[0], expected_pct, atol=1e-4)
-        np.testing.assert_allclose(
-            result.delta[0], mean_a - mean_b, atol=1e-4
-        )
+        np.testing.assert_allclose(result.delta[0], mean_a - mean_b, atol=1e-4)
         np.testing.assert_allclose(
             result.delta_median[0],
             np.median(va, axis=1) - np.median(vb, axis=1),
@@ -235,9 +223,7 @@ class TestPairwiseRoiStats:
             _square_mask(MID_POINTS),
         ]
         samples = [mask_band_values(ws, m) for m in masks]
-        result = pairwise_roi_stats(
-            samples, ["Тёмная", "Светлая", "Средняя"], ref_index=0
-        )
+        result = pairwise_roi_stats(samples, ["Тёмная", "Светлая", "Средняя"], ref_index=0)
         assert result.pairs == (
             "Тёмная vs Светлая",
             "Тёмная vs Средняя",
@@ -252,9 +238,7 @@ class TestPairwiseRoiStats:
         ws = _ws(synthetic_dataset)
         masks = [_square_mask(DARK_POINTS), _square_mask(BRIGHT_POINTS)]
         samples = [mask_band_values(ws, m) for m in masks]
-        result = pairwise_roi_stats(
-            samples, ["A", "B"], ref_index=0, test=TEST_WELCH
-        )
+        result = pairwise_roi_stats(samples, ["A", "B"], ref_index=0, test=TEST_WELCH)
         assert result.test == TEST_WELCH
         ref = ttest_ind(
             samples[0].astype(np.float64),
@@ -305,19 +289,13 @@ class TestPairwiseRoiStats:
 class TestTableRowsAndExport:
     def _samples_with_nan_pair(self):
         # Band 1 is identical in both ROIs -> NaN test/AUC/d in that channel.
-        a = np.array(
-            [[1.0, 2.0, 3.0, 4.0, 5.0], [7.0, 7.0, 7.0, 7.0, 7.0]], dtype=np.float32
-        )
-        b = np.array(
-            [[3.0, 4.0, 5.0, 6.0, 7.0], [7.0, 7.0, 7.0, 7.0, 7.0]], dtype=np.float32
-        )
+        a = np.array([[1.0, 2.0, 3.0, 4.0, 5.0], [7.0, 7.0, 7.0, 7.0, 7.0]], dtype=np.float32)
+        b = np.array([[3.0, 4.0, 5.0, 6.0, 7.0], [7.0, 7.0, 7.0, 7.0, 7.0]], dtype=np.float32)
         return [a, b]
 
     def test_table_rows_long_format(self):
         samples = self._samples_with_nan_pair()
-        result = pairwise_roi_stats(
-            samples, ["A", "B"], ref_index=0, wavelengths=[500.0, 600.0]
-        )
+        result = pairwise_roi_stats(samples, ["A", "B"], ref_index=0, wavelengths=[500.0, 600.0])
         rows = table_rows(result)
         assert len(rows) == 2 * 1
         assert list(rows[0].keys()) == list(TABLE_COLUMNS)
@@ -333,9 +311,7 @@ class TestTableRowsAndExport:
 
     def test_export_csv_utf8_sig_and_roundtrip(self, tmp_path):
         samples = self._samples_with_nan_pair()
-        result = pairwise_roi_stats(
-            samples, ["A", "B"], ref_index=0, wavelengths=[500.0, 600.0]
-        )
+        result = pairwise_roi_stats(samples, ["A", "B"], ref_index=0, wavelengths=[500.0, 600.0])
         rows = table_rows(result)
         path = export_csv(rows, tmp_path / "stats.csv")
         raw = path.read_bytes()
@@ -352,9 +328,7 @@ class TestTableRowsAndExport:
 
     def test_export_xlsx(self, tmp_path):
         samples = self._samples_with_nan_pair()
-        result = pairwise_roi_stats(
-            samples, ["A", "B"], ref_index=0, wavelengths=[500.0, 600.0]
-        )
+        result = pairwise_roi_stats(samples, ["A", "B"], ref_index=0, wavelengths=[500.0, 600.0])
         rows = table_rows(result)
         path = export_xlsx(rows, tmp_path / "stats.xlsx")
         wb = openpyxl.load_workbook(path)
@@ -368,6 +342,8 @@ class TestTableRowsAndExport:
         nan_col = list(TABLE_COLUMNS).index("p_value") + 1
         assert ws.cell(row=3, column=nan_col).value is None  # NaN -> empty cell
         assert ws.max_row == 1 + len(rows)
+
+
 class TestExportFormulaInjection:
     def _samples(self):
         a = np.array([[1.0, 2.0, 3.0, 4.0, 5.0]], dtype=np.float32)
@@ -388,9 +364,7 @@ class TestExportFormulaInjection:
         assert parsed[1][col] == "'=SUM(A1) vs B"
 
     def test_csv_leaves_normal_names_untouched(self, tmp_path):
-        result = pairwise_roi_stats(
-            self._samples(), ["A", "B"], ref_index=0, wavelengths=[500.0]
-        )
+        result = pairwise_roi_stats(self._samples(), ["A", "B"], ref_index=0, wavelengths=[500.0])
         path = export_csv(table_rows(result), tmp_path / "stats.csv")
         with open(path, newline="", encoding="utf-8-sig") as f:
             parsed = list(csv.reader(f))
@@ -406,9 +380,9 @@ class TestExportFormulaInjection:
         assert cell.data_type != "f"
         # data_only=True returns None for real formulas without cached values;
         # text must survive as the original string.
-        value_only = openpyxl.load_workbook(path, data_only=True).active.cell(
-            row=2, column=col
-        ).value
+        value_only = (
+            openpyxl.load_workbook(path, data_only=True).active.cell(row=2, column=col).value
+        )
         assert value_only == "=SUM(A1) vs B"
 
 
@@ -420,16 +394,11 @@ class TestPairwiseCancelAndIds:
 
     def test_cancelled_returns_none(self):
         assert (
-            pairwise_roi_stats(
-                self._samples(), ["A", "B"], 0, cancel={"cancelled": True}
-            )
-            is None
+            pairwise_roi_stats(self._samples(), ["A", "B"], 0, cancel={"cancelled": True}) is None
         )
 
     def test_active_cancel_token_runs(self):
-        result = pairwise_roi_stats(
-            self._samples(), ["A", "B"], 0, cancel={"cancelled": False}
-        )
+        result = pairwise_roi_stats(self._samples(), ["A", "B"], 0, cancel={"cancelled": False})
         assert result is not None
 
     def test_used_ids_default_to_names(self):

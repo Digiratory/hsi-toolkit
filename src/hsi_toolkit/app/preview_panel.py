@@ -8,9 +8,11 @@ map onto the wavelength axis.
 
 from __future__ import annotations
 
+from typing import Optional
+
 import numpy as np
-from matplotlib.figure import Figure
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
+from matplotlib.figure import Figure
 from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -23,7 +25,6 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-from typing import Optional
 
 from hsi_toolkit.app.canvas.preview_canvas import PreviewCanvas
 from hsi_toolkit.core import preview as preview_core
@@ -125,12 +126,8 @@ class PreviewPanel(QWidget):
         self.labels_check.toggled.connect(self._on_labels_changed)
         self.label_size_spin.valueChanged.connect(self._on_labels_changed)
         # Pan/zoom of the preview changes the strip's spatial region.
-        self.canvas.ax.callbacks.connect(
-            "xlim_changed", self._on_view_limits_changed
-        )
-        self.canvas.ax.callbacks.connect(
-            "ylim_changed", self._on_view_limits_changed
-        )
+        self.canvas.ax.callbacks.connect("xlim_changed", self._on_view_limits_changed)
+        self.canvas.ax.callbacks.connect("ylim_changed", self._on_view_limits_changed)
         self._set_controls_enabled(False)
         self._bottom.setVisible(False)
 
@@ -154,9 +151,7 @@ class PreviewPanel(QWidget):
         return row
 
     def _on_labels_changed(self) -> None:
-        self.canvas.set_label_settings(
-            self.labels_check.isChecked(), self.label_size_spin.value()
-        )
+        self.canvas.set_label_settings(self.labels_check.isChecked(), self.label_size_spin.value())
 
     # -- workspace --------------------------------------------------------
 
@@ -225,11 +220,7 @@ class PreviewPanel(QWidget):
 
     @property
     def _stretch(self):
-        return (
-            "minmax"
-            if self.stretch_combo.currentText() == STRETCH_MINMAX
-            else (2.0, 98.0)
-        )
+        return "minmax" if self.stretch_combo.currentText() == STRETCH_MINMAX else (2.0, 98.0)
 
     def _integral_spectrum(self, ws) -> np.ndarray:
         """Mean intensity per band over the image region currently in view."""
@@ -297,9 +288,7 @@ class PreviewPanel(QWidget):
         ax.set_ylabel("Средняя интенсивность", fontsize=8)
         x0, x1, y0, y1 = region
         if (x1 - x0, y1 - y0) < (ws.samples, ws.lines):
-            ax.set_title(
-                f"Область: x {x0}–{x1}, y {y0}–{y1}", fontsize=8
-            )
+            ax.set_title(f"Область: x {x0}–{x1}, y {y0}–{y1}", fontsize=8)
         ax.tick_params(labelsize=8)
         self.spectrum_figure.tight_layout(pad=0.8)
         self.spectrum_canvas.draw_idle()

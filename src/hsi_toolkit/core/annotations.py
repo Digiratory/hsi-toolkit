@@ -17,7 +17,6 @@ from typing import Any, Dict, Iterator, List, Literal, Optional, Tuple
 import numpy as np
 
 from hsi_toolkit.core.spectra import (
-    ribbon_offsets,
     ribbon_pixel_indices,
     segment_perpendicular,
 )
@@ -131,9 +130,7 @@ class AnnotationSet:
         path = Path(path)
         # Atomic write: a crash mid-write must not destroy the previous copy.
         tmp = path.with_name(path.name + ".tmp")
-        tmp.write_text(
-            json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
-        )
+        tmp.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
         os.replace(tmp, path)
         return path
 
@@ -155,9 +152,7 @@ def annotations_path_for(hdr_path: Path | str) -> Path:
     return Path(hdr_path).with_suffix(".annotations.json")
 
 
-def polygon_bounds(
-    points: List[Point], shape_hw: Tuple[int, int]
-) -> Tuple[int, int, int, int]:
+def polygon_bounds(points: List[Point], shape_hw: Tuple[int, int]) -> Tuple[int, int, int, int]:
     """Clamped inclusive pixel bbox (x0, y0, x1, y1) covering all points.
 
     Single source of truth for the rasterizer and the NPZ exporter so an

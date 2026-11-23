@@ -9,7 +9,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Dict, List, Optional
 
 import numpy as np
 
@@ -142,11 +142,7 @@ def guess_raw_path(hdr_path: Path, hdr_info: Dict[str, Any]) -> Optional[Path]:
             resolved = candidate.resolve()
         except OSError:
             resolved = None
-        if (
-            resolved is not None
-            and resolved.is_relative_to(parent)
-            and resolved.is_file()
-        ):
+        if resolved is not None and resolved.is_relative_to(parent) and resolved.is_file():
             return candidate
 
     for suffix in (".raw", ".dat", ".img", ".bin", ""):
@@ -168,8 +164,7 @@ def load_hsi_from_hdr(hdr_path: Path | str) -> HSIDataset:
     byte_order = int(info["byte order"] or 0)
 
     if samples is None or lines is None or bands is None or data_type is None:
-        raise ValueError(
-            "HDR missing required fields: samples/lines/bands/data type")
+        raise ValueError("HDR missing required fields: samples/lines/bands/data type")
     if data_type not in ENVI_DTYPE_MAP:
         raise ValueError(f"Unsupported ENVI data type: {data_type}")
 
@@ -177,8 +172,7 @@ def load_hsi_from_hdr(hdr_path: Path | str) -> HSIDataset:
     if raw_path is None:
         raise FileNotFoundError("RAW file not found next to HDR")
 
-    dtype = np.dtype(ENVI_DTYPE_MAP[data_type]).newbyteorder(
-        ">" if byte_order == 1 else "<")
+    dtype = np.dtype(ENVI_DTYPE_MAP[data_type]).newbyteorder(">" if byte_order == 1 else "<")
     if interleave == "bsq":
         shape = (bands, lines, samples)
     elif interleave == "bil":
@@ -192,7 +186,8 @@ def load_hsi_from_hdr(hdr_path: Path | str) -> HSIDataset:
     actual_bytes = raw_path.stat().st_size
     if actual_bytes < expected_bytes:
         raise ValueError(
-            f"RAW is smaller than HDR shape requires: got {actual_bytes} bytes, need {expected_bytes}"
+            f"RAW is smaller than HDR shape requires: got {actual_bytes} bytes, "
+            f"need {expected_bytes}"
         )
 
     mm = np.memmap(raw_path, dtype=dtype, mode="r", offset=offset, shape=shape)

@@ -40,14 +40,10 @@ class HSIWorkspace:
         dark: Optional[HSIDataset] = None,
     ) -> None:
         if (white is None) != (dark is None):
-            raise ValueError(
-                "Both white and dark references are required for correction"
-            )
+            raise ValueError("Both white and dark references are required for correction")
         cube_wl = np.asarray(cube.wavelengths, dtype=np.float64)
         if cube_wl.size != cube.bands:
-            raise ValueError(
-                "Cube HDR lacks per-band wavelengths; spectral axis is unknown"
-            )
+            raise ValueError("Cube HDR lacks per-band wavelengths; spectral axis is unknown")
         self.order = np.argsort(cube_wl, kind="stable")
         self.wavelengths = cube_wl[self.order]
         self.hdr_path = Path(cube.hdr_path)
@@ -154,9 +150,7 @@ class HSIWorkspace:
         for b in range(self.bands):
             band = self.working_band(b)
             out[b] = (
-                band[:h, :w]
-                .reshape(h // factor, factor, w // factor, factor)
-                .mean(axis=(1, 3))
+                band[:h, :w].reshape(h // factor, factor, w // factor, factor).mean(axis=(1, 3))
             )
         self.lowres = out
         return out
@@ -181,20 +175,14 @@ def _reference_profile(
 ) -> np.ndarray:
     """Per-band, per-column mean over lines of a reference cube: (bands, samples)."""
     if ds.bands != bands:
-        raise ValueError(
-            f"{name} reference has {ds.bands} bands, the cube has {bands}"
-        )
+        raise ValueError(f"{name} reference has {ds.bands} bands, the cube has {bands}")
     if ds.samples != samples:
-        raise ValueError(
-            f"{name} reference has {ds.samples} samples, the cube has {samples}"
-        )
+        raise ValueError(f"{name} reference has {ds.samples} samples, the cube has {samples}")
     ds_wl = np.asarray(ds.wavelengths, dtype=np.float64)
     if ds_wl.size == ds.bands:
         order = np.argsort(ds_wl, kind="stable")
         if not np.allclose(ds_wl[order], cube_wl, atol=1.0):
-            raise ValueError(
-                f"{name} reference wavelengths differ from the cube wavelengths"
-            )
+            raise ValueError(f"{name} reference wavelengths differ from the cube wavelengths")
     else:
         order = np.arange(ds.bands)
     profile = np.empty((bands, samples), dtype=np.float64)

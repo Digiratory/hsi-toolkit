@@ -2,11 +2,10 @@ import json
 
 import numpy as np
 import pytest
+from conftest import BANDS, WAVELENGTHS, write_envi
 
 from hsi_toolkit.core.annotations import Annotation
 from hsi_toolkit.core.exporter import export_npz, slugify
-
-from conftest import BANDS, WAVELENGTHS, write_envi
 
 
 def _ws(synthetic_dataset):
@@ -72,9 +71,7 @@ class TestExportPolygon:
         assert mask.shape == (6, 8)
         assert mask.sum() > 0
         for b in range(BANDS):
-            np.testing.assert_allclose(
-                cutout[b], ws.corrected_band(b)[4:10, 3:11], atol=1e-6
-            )
+            np.testing.assert_allclose(cutout[b], ws.corrected_band(b)[4:10, 3:11], atol=1e-6)
         meta = json.loads(str(data["objects"]))
         assert meta[0]["key"] == "01_zona"
         assert meta[0]["id"] == "p1"

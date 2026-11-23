@@ -126,9 +126,7 @@ def holm_adjust(p: np.ndarray) -> np.ndarray:
     """
     return _finite_adjust(
         p,
-        lambda ranked, m: np.maximum.accumulate(
-            (m - np.arange(m)) * ranked
-        ),
+        lambda ranked, m: np.maximum.accumulate((m - np.arange(m)) * ranked),
     )
 
 
@@ -211,9 +209,7 @@ def pairwise_roi_stats(
     if correction not in CORRECTIONS:
         raise ValueError(f"Unknown correction: {correction!r}")
     if ids is not None and len(ids) != len(names):
-        raise ValueError(
-            f"ids ({len(ids)}) and names ({len(names)}) must have the same length"
-        )
+        raise ValueError(f"ids ({len(ids)}) and names ({len(names)}) must have the same length")
 
     bands = int(np.asarray(samples[0]).shape[0])
     for s in samples:
@@ -222,17 +218,12 @@ def pairwise_roi_stats(
 
     names = tuple(str(n) for n in names)
     used_ids = names if ids is None else tuple(str(x) for x in ids)
-    pair_indices = tuple(
-        (i, j) for i in range(len(samples)) for j in range(i + 1, len(samples))
-    )
+    pair_indices = tuple((i, j) for i in range(len(samples)) for j in range(i + 1, len(samples)))
     pairs = tuple(f"{names[i]} vs {names[j]}" for i, j in pair_indices)
     n_pairs = len(pair_indices)
 
     mean_ref = np.array(
-        [
-            float(np.mean(np.asarray(samples[ref_index][b], dtype=np.float64)))
-            for b in range(bands)
-        ]
+        [float(np.mean(np.asarray(samples[ref_index][b], dtype=np.float64))) for b in range(bands)]
     )
 
     shape = (n_pairs, bands)
@@ -283,9 +274,7 @@ def pairwise_roi_stats(
         wavelengths = np.full(bands, _NAN)
     wavelengths = np.asarray(wavelengths, dtype=np.float64)
     if wavelengths.size != bands:
-        raise ValueError(
-            f"wavelengths size {wavelengths.size} does not match band count {bands}"
-        )
+        raise ValueError(f"wavelengths size {wavelengths.size} does not match band count {bands}")
 
     return RoiStatsResult(
         wavelengths=wavelengths,
@@ -380,9 +369,7 @@ def export_xlsx(rows: Sequence[dict], path: Path | str, sheet: str = "Стати
         import openpyxl
         from openpyxl.styles import Font
     except ImportError as exc:
-        raise RuntimeError(
-            "XLSX export requires the 'openpyxl' package (uv add openpyxl)"
-        ) from exc
+        raise RuntimeError("XLSX export requires the 'openpyxl' package (uv add openpyxl)") from exc
 
     workbook = openpyxl.Workbook()
     ws = workbook.active
