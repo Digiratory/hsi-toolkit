@@ -85,6 +85,7 @@ uv run pyinstaller --noconfirm hsi-toolkit.spec
 добавлении иконки: параметр `icon=[...]` в секции `EXE`).
 
 Примечания:
+
 - `mpl_toolkits.mplot3d` (3D-графики спектров полилиний) подключается
   динамически, поэтому перечислен в `hiddenimports` spec-файла.
 - Для проверки сборки без дисплея: `QT_QPA_PLATFORM=offscreen dist\hsi-toolkit.exe`.
@@ -116,7 +117,9 @@ uv run pre-commit run --all-files   # прогон по всем файлам в
 - **release** (`.github/workflows/release.yml`) — на теги `v*` и вручную
   (`workflow_dispatch`): на Windows-раннере гоняются тесты, затем
   PyInstaller собирает `hsi-toolkit.exe`; exe публикуется как артефакт,
-  а на теге — ещё и как вложение GitHub Release.
+  а на теге — ещё и как вложение GitHub Release (пререлизы `rc/a/b` помечаются
+  автоматически). Версия приложения берётся из git-тега; процедура релизов —
+  в [RELEASE.md](RELEASE.md).
 
 Структура:
 

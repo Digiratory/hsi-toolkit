@@ -1,12 +1,12 @@
 [project]
 name = "hsi-toolkit"
-version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
 authors = [
     { name = "Александр", email = "siniza.s.94@gmail.com" }
 ]
 requires-python = ">=3.14"
+dynamic = ["version"]
 dependencies = [
     "matplotlib>=3.10",
     "numpy>=2.5.4",
@@ -19,8 +19,18 @@ dependencies = [
 hsi-toolkit = "hsi_toolkit:main"
 
 [build-system]
-requires = ["uv_build>=0.12.15,<0.13.0"]
-build-backend = "uv_build"
+requires = ["hatchling>=1.27.0", "hatch-vcs>=0.5.0"]
+build-backend = "hatchling.build"
+
+[tool.hatch.version]
+source = "vcs"
+raw-options = { local_scheme = "no-local-version", fallback_version = "0.0.0" }
+
+[tool.hatch.build.hooks.vcs]
+version-file = "src/hsi_toolkit/_version.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/hsi_toolkit"]
 
 [dependency-groups]
 dev = [
