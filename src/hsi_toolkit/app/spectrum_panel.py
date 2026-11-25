@@ -33,6 +33,11 @@ MAX_TRACES = 30
 KIND_POLYGONS = "Полигоны"
 KIND_LINES = "Полилинии"
 
+# Cache marker for an object whose last computation failed: it is not retried
+# (and not re-announced) on unrelated updates; a geometry/settings change gets
+# a new key and is retried, hiding/deleting evicts the entry via the sweep.
+_FAILED = object()
+
 
 def _ci_setting(index: int) -> Tuple[str, tuple]:
     return {
@@ -161,6 +166,8 @@ class SpectrumPanel(QWidget):
         for ann in annotations:
             key = self._object_key(self._ws, ann, stat, ci)
             hit = self._cache.get(key)
+            if hit is _FAILED:
+                continue  # keep the failed object skipped; don't retry/re-announce
             if hit is None:
                 missing.append(ann)
             elif ann.kind == "polygon":
@@ -204,6 +211,7 @@ class SpectrumPanel(QWidget):
                         )
                         computed[key] = (rel, spectra)
                 except Exception as exc:  # noqa: BLE001 - reported per object
+                    computed[key] = _FAILED
                     skipped.append((ann.name, f"{type(exc).__name__}: {exc}"))
             progress.emit(100, "Готово")
             return (computed, skipped)
@@ -239,14 +247,18 @@ class SpectrumPanel(QWidget):
         self._cache.update(computed)
         stat, ci = _ci_setting(self.ci_combo.currentIndex())
         self._result_polygons = [
-            (a.id, *self._cache[self._object_key(self._ws, a, stat, ci)])
+            (a.id, *value)
             for a in requested
-            if a.kind == "polygon" and self._object_key(self._ws, a, stat, ci) in self._cache
+            if a.kind == "polygon"
+            and (value := self._cache.get(self._object_key(self._ws, a, stat, ci)))
+            not in (None, _FAILED)
         ]
         self._result_lines = [
-            (a.id, *self._cache[self._object_key(self._ws, a, stat, ci)])
+            (a.id, *value)
             for a in requested
-            if a.kind == "polyline" and self._object_key(self._ws, a, stat, ci) in self._cache
+            if a.kind == "polyline"
+            and (value := self._cache.get(self._object_key(self._ws, a, stat, ci)))
+            not in (None, _FAILED)
         ]
         self._redraw()
         if skipped:

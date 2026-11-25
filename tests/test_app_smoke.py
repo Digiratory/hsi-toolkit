@@ -968,6 +968,22 @@ def test_spectrum_skips_degenerate_annotation(window, qapp):
     assert "Пропущены объекты" in win.statusBar().currentMessage()
     assert "Вне кадра" in win.statusBar().currentMessage()
 
+    # The failed object is cached as failed: unrelated updates (a rename, a
+    # settings-only redraw) must not retry it or re-announce the skip.
+    good.name = "Зона 2"
+    win._on_annotation_changed(good.id)
+    qapp.processEvents()
+    wait_for(lambda: not win.spectrum_panel.is_busy, qapp)
+    assert len(skipped_events) == 1
+    assert [r[0] for r in win.spectrum_panel._result_polygons] == ["ok1"]
+
+    # Fixing the geometry gives the object a new cache key: it is retried.
+    outside.points = [(5.0, 20.0), (10.0, 20.0), (10.0, 25.0), (5.0, 25.0)]
+    win._on_annotation_changed(outside.id)
+    wait_for(lambda: not win.spectrum_panel.is_busy, qapp)
+    assert [r[0] for r in win.spectrum_panel._result_polygons] == ["bad1", "ok1"]
+    assert len(skipped_events) == 1  # the retry succeeded: no new skip report
+
 
 def test_toolbar_syncs_after_creation(window, qapp, monkeypatch):
     # Regression: the creation flow reset the canvas to select mode but left
